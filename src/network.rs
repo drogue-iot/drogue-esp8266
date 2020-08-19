@@ -8,7 +8,7 @@ use heapless::ArrayLength;
 use heapless::Vec;
 use embedded_nal::{TcpStack, SocketAddr, Mode};
 use core::cell::RefCell;
-use crate::network::Error::SocketNotOpen;
+use crate::network::Error::{SocketNotOpen, UnableToOpen, WriteError, ReadError};
 use crate::protocol::{Command, ConnectionType};
 
 #[derive(Debug)]
@@ -77,6 +77,9 @@ pub struct TcpSocket(usize);
 pub enum Error {
     NoAvailableSockets,
     SocketNotOpen,
+    UnableToOpen,
+    WriteError,
+    ReadError,
 }
 
 impl<'a, Tx, NumSockets, InboundBufSize> TcpStack for NetworkStack<'a, Tx, NumSockets, InboundBufSize>
@@ -112,16 +115,14 @@ impl<'a, Tx, NumSockets, InboundBufSize> TcpStack for NetworkStack<'a, Tx, NumSo
     fn connect(&self, socket: Self::TcpSocket, remote: SocketAddr) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        let result = adapter.send(
-            Command::StartConnection(socket.0,
-                                     ConnectionType::TCP,
-                                     remote,
-            )
-        );
-
-        log::info!("socket connect {:?}", result);
-
-        Ok(socket)
+        match adapter.connect_tcp(socket.0, remote) {
+            Ok(_) => {
+                Ok(socket)
+            }
+            Err(_) => {
+                Err(UnableToOpen)
+            }
+        }
     }
 
     fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
@@ -129,11 +130,32 @@ impl<'a, Tx, NumSockets, InboundBufSize> TcpStack for NetworkStack<'a, Tx, NumSo
     }
 
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
-        unimplemented!()
+        let mut adapter = self.adapter.borrow_mut();
+
+        match adapter.write(socket.0, buffer) {
+            Ok(_) => {
+                Ok(buffer.len())
+            }
+            Err(_) => {
+                nb::Result::Err(nb::Error::Other(WriteError))
+            }
+        }
     }
 
     fn read(&self, socket: &mut Self::TcpSocket, buffer: &mut [u8]) -> nb::Result<usize, Self::Error> {
-        unimplemented!()
+        let mut adapter = self.adapter.borrow_mut();
+        log::info!("try read");
+        let result = adapter.read(socket.0, buffer);
+        let result = match result {
+            Ok(len) => {
+                Ok(len)
+            }
+            Err(_) => {
+                Err(nb::Error::Other(ReadError))
+            }
+        };
+        log::info!("read done");
+        result
     }
 
     fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {

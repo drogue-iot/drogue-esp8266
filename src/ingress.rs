@@ -47,23 +47,33 @@ impl<'a, Rx> Ingress<'a, Rx>
 
     pub fn digest(&mut self) {
         let result = self.buffer.parse();
-        //info!( "digest {:?}", result);
+
 
         match result {
             Ok(response) => {
                 match response {
                     Response::None => {}
-
-                    //response @ _ => {
-                    //info!("response {:?}", *response);
-                    //   self.producer.enqueue(response);
                     Response::Ok => {
+                        self.producer.enqueue(response);
+                    }
+                    Response::Error => {
                         self.producer.enqueue(response);
                     }
                     Response::FirmwareInfo(..) => {
                         self.producer.enqueue(response);
                     }
-                    Response::ReadyForData => {}
+                    Response::ReadyForData => {
+                        self.producer.enqueue(response);
+                    }
+                    Response::DataReceived(..) => {
+                        self.producer.enqueue(response);
+                    }
+                    Response::DataAvailable { link_id, len } => {
+                        log::info!("data available for {} of {}", link_id, len);
+                    }
+                    Response::SendOk(..) => {
+                        self.producer.enqueue(response);
+                    }
                     Response::WifiConnected => {
                         log::info!("wifi connected");
                     }
@@ -79,9 +89,12 @@ impl<'a, Rx> Ingress<'a, Rx>
                     Response::IpAddresses(..) => {
                         self.producer.enqueue(response);
                     }
-                    Response::Connect(..) => {
-                        log::info!("connect {:?}", response);
+                    Response::Connect(ref link_id) => {
+                        log::info!("connect {}", link_id);
                         self.producer.enqueue(Response::Ok);
+                    }
+                    Response::Closed(ref link_id) => {
+                        log::info!( "disconnect {}", link_id );
                     }
                 }
             }

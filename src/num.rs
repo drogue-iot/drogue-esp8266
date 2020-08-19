@@ -29,3 +29,17 @@ pub(crate) fn atoi_u8(digits: &[u8]) -> Option<u8> {
     }
     Some(num)
 }
+
+pub(crate) fn atoi_usize(digits: &[u8]) -> Option<usize> {
+    let mut num: usize = 0;
+    let len = digits.len();
+    for (i, digit) in digits.iter().enumerate() {
+        let digit = ascii_to_digit(*digit)? as usize;
+        let mut exp = 1;
+        for _ in 0..(len - i - 1) {
+            exp *= 10;
+        }
+        num += exp * digit;
+    }
+    Some(num)
+}

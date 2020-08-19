@@ -5,7 +5,7 @@ use embedded_hal::{
 };
 
 use crate::Error;
-use crate::protocol::{Command, Response, WifiConnectionFailure, FirmwareInfo, IpAddresses};
+use crate::protocol::{Command, Response, WifiConnectionFailure, FirmwareInfo, IpAddresses, ConnectionType};
 
 use heapless::{i, spsc::{
     Queue,
@@ -20,6 +20,7 @@ use log::info;
 
 use crate::ingress::Ingress;
 use crate::network::{NetworkStack, Socket, Sockets};
+use embedded_nal::SocketAddr;
 
 type Initialized<'a, Tx, Rx> = (
     Adapter<'a, Tx>,
@@ -60,6 +61,7 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
                         log::debug!("adapter is ready");
                         disable_echo(&mut tx, &mut rx);
                         enable_mux(&mut tx, &mut rx);
+                        set_recv_mode(&mut tx, &mut rx);
                         //enable_mux();
                         //let mut queue = Queue::new();
                         let (producer, consumer) = queue.split();
@@ -117,6 +119,19 @@ fn enable_mux<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
     info!("mux enabled");
 }
 
+fn set_recv_mode<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
+{
+    const cmd: &[u8] = b"AT+CIPRECVMODE=1\r\n";
+    for b in cmd.iter() {
+        nb::block!(tx.write(*b));
+    }
+    wait_for_ok(rx);
+    info!("mux enabled");
+}
+
 fn wait_for_ok<Rx>(rx: &mut Rx)
     where
         Rx: Read<u8>,
@@ -129,12 +144,12 @@ fn wait_for_ok<Rx>(rx: &mut Rx)
             Ok(b) => {
                 buf[pos] = b;
                 pos += 1;
-                if buf[0..pos].ends_with( b"OK\r\n") {
+                if buf[0..pos].ends_with(b"OK\r\n") {
                     log::info!( "matched OK");
-                    return
+                    return;
                 }
-            },
-            Err(_) => {},
+            }
+            Err(_) => {}
         }
     }
 }
@@ -163,6 +178,8 @@ impl<'a, Tx> Adapter<'a, Tx>
         nb::block!( self.tx.write( b'\n' ));
         info!("await response");
 
+        self.wait_for_response()
+            /*
         loop {
             // busy loop until a response is received.
             let response = self.consumer.dequeue();
@@ -177,11 +194,30 @@ impl<'a, Tx> Adapter<'a, Tx>
                 }
             }
         }
+             */
         //command.parse()
         //Ok(Response::Ok)
     }
 
-    pub fn get_firmware_info(&mut self) -> Result<FirmwareInfo,()> {
+    fn wait_for_response(&mut self) -> Result<Response, Error> {
+        loop {
+            // busy loop until a response is received.
+            let response = self.consumer.dequeue();
+            match response {
+                None => {
+                    //info!("got a none");
+                    continue;
+                }
+                Some(response) => {
+                    //info!("got {:?}", response);
+                    return Ok(response);
+                }
+            }
+        }
+
+    }
+
+    pub fn get_firmware_info(&mut self) -> Result<FirmwareInfo, ()> {
         let command = Command::QueryFirmwareInfo;
 
         match self.send(command) {
@@ -189,15 +225,15 @@ impl<'a, Tx> Adapter<'a, Tx>
                 match response {
                     Response::FirmwareInfo(info) => {
                         Ok(info)
-                    },
+                    }
                     _ => {
                         Err(())
                     }
                 }
-            },
+            }
             Err(_) => {
                 Err(())
-            },
+            }
         }
     }
 
@@ -209,7 +245,137 @@ impl<'a, Tx> Adapter<'a, Tx>
                 match response {
                     Response::IpAddresses(addresses) => {
                         Ok(addresses)
-                    },
+                    }
+                    _ => {
+                        Err(())
+                    }
+                }
+            }
+            Err(_) => {
+                Err(())
+            }
+        }
+    }
+
+    pub fn join<'c>(&mut self, ssid: &'c str, password: &'c str) -> Result<(), WifiConnectionFailure> {
+        let command = Command::JoinAp {
+            ssid,
+            password,
+        };
+
+        match self.send(command) {
+            Ok(response) => {
+                match response {
+                    Response::Ok => {
+                        Ok(())
+                    }
+                    Response::WifiConnectionFailure(reason) => {
+                        Err(reason)
+                    }
+                    _ => {
+                        Err(WifiConnectionFailure::ConnectionFailed)
+                    }
+                }
+            }
+            Err(_) => {
+                Err(WifiConnectionFailure::ConnectionFailed)
+            }
+        }
+    }
+
+    pub fn connect_tcp(&mut self, link_id: usize, remote: SocketAddr) -> Result<(), ()> {
+        let command = Command::StartConnection(link_id,
+                                               ConnectionType::TCP,
+                                               remote);
+        match self.send(command) {
+            Ok(response) => {
+                match response {
+                    Response::Ok => {
+                        Ok(())
+                    }
+                    _ => {
+                        Err(())
+                    }
+                }
+            }
+            Err(_) => {
+                Err(())
+            }
+        }
+    }
+
+    pub fn write(&mut self, link_id: usize, buffer: &[u8]) -> Result<usize, ()> {
+        let command = Command::Send {
+            link_id,
+            len: buffer.len(),
+        };
+
+        match self.send(command) {
+            Ok(response) => {
+                match response {
+                    Response::Ok => {
+                        //Ok(buffer.len())
+                        match self.wait_for_response() {
+                            Ok(response) => {
+                                match response {
+                                    Response::ReadyForData => {
+                                        info!( "sending data {}", buffer.len());
+                                        for b in buffer.iter() {
+                                            nb::block!( self.tx.write( *b ));
+                                        }
+                                        info!( "sent data {}", buffer.len());
+                                        match self.wait_for_response() {
+                                            Ok(response) => {
+                                                match response {
+                                                    Response::SendOk(len) => {
+                                                        Ok(len)
+                                                    }
+                                                    _ => {
+                                                        Err(())
+                                                    }
+                                                }
+                                            },
+                                            Err(_) => {
+                                                Err(())
+                                            },
+                                        }
+                                    }
+                                    _ => {
+                                        Err(())
+                                    }
+                                }
+                            },
+                            Err(_) => {
+                                Err(())
+                            },
+                        }
+                    }
+                    _ => {
+                        Err(())
+                    }
+                }
+            }
+            Err(_) => {
+                Err(())
+            }
+        }
+    }
+
+    pub fn read(&mut self, link_id: usize, buffer: &mut [u8]) -> Result<usize, ()> {
+        let command = Command::Receive {
+            link_id,
+            len: buffer.len(),
+        };
+
+        match self.send(command) {
+            Ok(response) => {
+                match response {
+                    Response::DataReceived(inbound, len) => {
+                        for (i, b) in inbound[0..len].iter().enumerate() {
+                            buffer[i] = *b;
+                        }
+                        Ok(len)
+                    }
                     _ => {
                         Err(())
                     }
@@ -221,33 +387,9 @@ impl<'a, Tx> Adapter<'a, Tx>
         }
     }
 
-    pub fn join<'c>(&mut self, ssid: &'c str, password: &'c str) -> Result<(), WifiConnectionFailure> {
-        let command = Command::JoinAp {
-            ssid,
-            password
-        };
 
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::Ok => {
-                        Ok(())
-                    },
-                    Response::WifiConnectionFailure(reason) => {
-                        Err(reason)
-                    },
-                    _ => {
-                        Err(WifiConnectionFailure::ConnectionFailed)
-                    }
-                }
-            },
-            Err(_) => {
-                Err(WifiConnectionFailure::ConnectionFailed)
-            },
-        }
-    }
 
-    pub fn into_network_stack<NumSockets, InboundBufSize>(self, sockets: &'a mut Sockets<NumSockets, InboundBufSize>) -> NetworkStack<'a, Tx, NumSockets,InboundBufSize>
+    pub fn into_network_stack<NumSockets, InboundBufSize>(self, sockets: &'a mut Sockets<NumSockets, InboundBufSize>) -> NetworkStack<'a, Tx, NumSockets, InboundBufSize>
         where
             NumSockets: ArrayLength<Socket<InboundBufSize>>,
             InboundBufSize: ArrayLength<u8>

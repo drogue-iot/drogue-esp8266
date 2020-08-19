@@ -1,10 +1,10 @@
-
 use nom::named;
 use nom::do_parse;
 use nom::tuple;
 use nom::tag;
 use nom::opt;
 use nom::alt;
+use nom::take;
 use nom::char;
 use nom::take_until;
 use nom::character::streaming::digit1;
@@ -20,12 +20,18 @@ use crate::protocol::IpAddresses;
 use crate::num::{
     ascii_to_digit,
     atoi_u8,
+    atoi_usize,
 };
 
 
 fn parse_u8(input: &[u8]) -> IResult<&[u8], u8> {
     let (input, digits) = digit1(input)?;
     IResult::Ok((input, atoi_u8(digits).unwrap()))
+}
+
+fn parse_usize(input: &[u8]) -> IResult<&[u8], usize> {
+    let (input, digits) = digit1(input)?;
+    IResult::Ok((input, atoi_usize(digits).unwrap()))
 }
 
 #[rustfmt::skip]
@@ -46,6 +52,19 @@ named!(
         ) >>
         (
             Response::Ok
+        )
+    )
+);
+
+named!(
+    pub error<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        opt!(crlf) >>
+        tag!("ERROR") >>
+        crlf >>
+        (
+            Response::Error
         )
     )
 );
@@ -189,13 +208,88 @@ named!(
     )
 );
 
+named!(
+    pub ready_for_data<Response>,
+    do_parse!(
+        tag!("> ") >>
+        (
+            Response::ReadyForData
+        )
+    )
+);
 
+named!(
+    pub send_ok<Response>,
+    do_parse!(
+        crlf >>
+        tag!("Recv ") >>
+        len: parse_usize >>
+        tag!(" bytes") >>
+        crlf >> crlf >>
+        tag!("SEND OK") >>
+        crlf >>
+        (
+            Response::SendOk(len)
+        )
+    )
+);
+
+named!(
+    pub data_available<Response>,
+    do_parse!(
+        opt!( crlf ) >>
+        tag!( "+IPD,") >>
+        link_id: parse_usize >>
+        char!(',') >>
+        len: parse_usize >>
+        crlf >>
+        (
+            Response::DataAvailable {link_id, len }
+        )
+    )
+);
+
+named!(
+    pub closed<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        link_id: parse_usize >>
+        tag!(",CLOSED") >>
+        crlf >>
+        (
+            Response::Closed(link_id)
+        )
+    )
+);
+
+named!(
+    pub data_received<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        tag!("+CIPRECVDATA,") >>
+        len: parse_usize >>
+        char!(':') >>
+        data: take!(len) >>
+        crlf >>
+        ok >>
+        ( {
+            let mut buf = [0; 128];
+            for (i, b) in data.iter().enumerate() {
+                //log::info!( "copy {} @ {}", *b as char, i);
+                buf[i] = *b;
+            }
+            //log::info!("------------> onwards {:?}", buf);
+            Response::DataReceived(buf, len)
+        } )
+    )
+);
 
 
 named!(
     pub parse<Response>,
     alt!(
           ok
+        | error
         | firmware_info
         | wifi_connected
         | wifi_disconnect
@@ -203,5 +297,10 @@ named!(
         | got_ip
         | ip_addresses
         | connect
+        | closed
+        | ready_for_data
+        | send_ok
+        | data_available
+        | data_received
     )
 );

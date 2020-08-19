@@ -25,6 +25,14 @@ pub enum Command<'a> {
     },
     QueryIpAddress,
     StartConnection(usize, ConnectionType, SocketAddr),
+    Send {
+        link_id: usize,
+        len: usize,
+    },
+    Receive {
+        link_id: usize,
+        len: usize,
+    },
 }
 
 impl<'a> Command<'a> {
@@ -62,18 +70,28 @@ impl<'a> Command<'a> {
                     IpAddr::V4(ip) => {
                         let octets = ip.octets();
                         write!(s, "\"{}.{}.{}.{}\",{}",
-                            octets[0],
-                            octets[1],
-                            octets[2],
-                            octets[3],
-                            socket_addr.port()
+                               octets[0],
+                               octets[1],
+                               octets[2],
+                               octets[3],
+                               socket_addr.port()
                         );
-                    },
+                    }
                     IpAddr::V6(_) => {
                         panic!("IPv6 not supported")
-                    },
+                    }
                 }
                 s as String<U128>
+            }
+            Command::Send { link_id, len } => {
+                let mut s = String::from("AT+CIPSEND=");
+                write!(s, "{},{}", link_id, len);
+                s
+            }
+            Command::Receive { link_id, len } => {
+                let mut s = String::from("AT+CIPRECVDATA=");
+                write!(s, "{},{}", link_id, len);
+                s
             }
         }
     }
@@ -82,15 +100,23 @@ impl<'a> Command<'a> {
 #[derive(Debug)]
 pub enum Response {
     None,
-    FirmwareInfo(FirmwareInfo),
     Ok,
+    Error,
+    FirmwareInfo(FirmwareInfo),
     ReadyForData,
+    SendOk(usize),
+    DataAvailable {
+        link_id: usize,
+        len: usize,
+    },
+    DataReceived([u8; 128], usize),
     WifiConnected,
     WifiConnectionFailure(WifiConnectionFailure),
     WifiDisconnect,
     GotIp,
     IpAddresses(IpAddresses),
     Connect(usize),
+    Closed(usize),
 }
 
 #[derive(Debug)]
