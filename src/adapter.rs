@@ -56,41 +56,43 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
             Ok(c) => {
                 buffer[pos] = c;
                 pos += 1;
-                if pos >= READY.len() {
-                    if buffer[pos - READY.len()..pos] == READY {
-                        log::debug!("adapter is ready");
-                        disable_echo(&mut tx, &mut rx);
-                        enable_mux(&mut tx, &mut rx);
-                        set_recv_mode(&mut tx, &mut rx);
-                        //enable_mux();
-                        //let mut queue = Queue::new();
-                        let (producer, consumer) = queue.split();
-                        //let (producer, consumer) = queue.split();
-                        return Ok(
-                            (
-                                Adapter {
-                                    tx,
-                                    consumer,
-                                },
-                                Ingress::new(rx, producer),
-                            )
-                        );
-                    }
+                if pos >= READY.len() && buffer[pos - READY.len()..pos] == READY {
+                    log::debug!("adapter is ready");
+                    disable_echo(&mut tx, &mut rx);
+                    enable_mux(&mut tx, &mut rx);
+                    set_recv_mode(&mut tx, &mut rx);
+                    //enable_mux();
+                    //let mut queue = Queue::new();
+                    let (producer, consumer) = queue.split();
+                    return Ok(
+                        (
+                            Adapter {
+                                tx,
+                                consumer,
+                            },
+                            Ingress::new(rx, producer),
+                        )
+                    );
                 }
             }
-            Err(e) => {
-                if let nb::Error::WouldBlock = e {
-                    continue;
-                }
-                counter += 1;
-                if counter > 10_000 {
-                    break;
-                }
-            }
+            Err(nb::Error::WouldBlock) => continue,
+            Err(_) if country > 10_000 => break,
+            Err(_) => counter += 1
         }
     }
 
     Err(Error::UnableToInitialize)
+}
+
+fn issue_command<Tx, Rx>(tx: &mut Tx, rx: &mut Rx, cmd: &[u8])
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
+{
+    for b in cmd.iter() {
+        nb::block!(tx.write(*b));
+    }
+    wait_for_ok(rx);
 }
 
 fn disable_echo<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
@@ -98,11 +100,7 @@ fn disable_echo<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
         Tx: Write<u8>,
         Rx: Read<u8>,
 {
-    const cmd: &[u8] = b"ATE0\r\n";
-    for b in cmd.iter() {
-        nb::block!(tx.write(*b));
-    }
-    wait_for_ok(rx);
+    issue_command(tx, rx, b"ATE0\r\n");
     info!("echo disabled");
 }
 
@@ -111,11 +109,7 @@ fn enable_mux<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
         Tx: Write<u8>,
         Rx: Read<u8>,
 {
-    const cmd: &[u8] = b"AT+CIPMUX=1\r\n";
-    for b in cmd.iter() {
-        nb::block!(tx.write(*b));
-    }
-    wait_for_ok(rx);
+    issue_command(tx, rx, b"AT+CIPMUX=1\r\n");
     info!("mux enabled");
 }
 
@@ -124,11 +118,7 @@ fn set_recv_mode<Tx, Rx>(tx: &mut Tx, rx: &mut Rx)
         Tx: Write<u8>,
         Rx: Read<u8>,
 {
-    const cmd: &[u8] = b"AT+CIPRECVMODE=1\r\n";
-    for b in cmd.iter() {
-        nb::block!(tx.write(*b));
-    }
-    wait_for_ok(rx);
+    issue_command(tx, rx, b"AT+CIPRECVMODE=1\r\n");
     info!("mux enabled");
 }
 
@@ -140,16 +130,13 @@ fn wait_for_ok<Rx>(rx: &mut Rx)
     let mut pos = 0;
 
     loop {
-        match nb::block!(rx.read()) {
-            Ok(b) => {
-                buf[pos] = b;
-                pos += 1;
-                if buf[0..pos].ends_with(b"OK\r\n") {
-                    log::info!( "matched OK");
-                    return;
-                }
+        if let Ok(b) = nb::block!(rx.read()) {
+            buf[pos] = b;
+            pos += 1;
+            if buf[0..pos].ends_with(b"OK\r\n") {
+                log::info!( "matched OK");
+                return;
             }
-            Err(_) => {}
         }
     }
 }
@@ -202,16 +189,11 @@ impl<'a, Tx> Adapter<'a, Tx>
     fn wait_for_response(&mut self) -> Result<Response, Error> {
         loop {
             // busy loop until a response is received.
-            let response = self.consumer.dequeue();
-            match response {
-                None => {
-                    //info!("got a none");
-                    continue;
-                }
-                Some(response) => {
-                    //info!("got {:?}", response);
-                    return Ok(response);
-                }
+            if let Some(response) = self.consumer.dequeue() {
+                //info!("got {:?}", response);
+                return Ok(response);
+            } else {
+                //info!("got a none");
             }
         }
 
@@ -220,40 +202,20 @@ impl<'a, Tx> Adapter<'a, Tx>
     pub fn get_firmware_info(&mut self) -> Result<FirmwareInfo, ()> {
         let command = Command::QueryFirmwareInfo;
 
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::FirmwareInfo(info) => {
-                        Ok(info)
-                    }
-                    _ => {
-                        Err(())
-                    }
-                }
-            }
-            Err(_) => {
-                Err(())
-            }
+        if let Ok(Response::FirmwareInfo(info)) = self.send(command) {
+            Ok(info)
+        } else {
+            Err(())
         }
     }
 
     pub fn get_ip_address(&mut self) -> Result<IpAddresses, ()> {
         let command = Command::QueryIpAddress;
 
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::IpAddresses(addresses) => {
-                        Ok(addresses)
-                    }
-                    _ => {
-                        Err(())
-                    }
-                }
-            }
-            Err(_) => {
-                Err(())
-            }
+        if let Ok(Response::IpAddresses(addresses)) = self.send(command) {
+            Ok(addresses)
+        } else {
+            Err(())
         }
     }
 
@@ -264,22 +226,9 @@ impl<'a, Tx> Adapter<'a, Tx>
         };
 
         match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::Ok => {
-                        Ok(())
-                    }
-                    Response::WifiConnectionFailure(reason) => {
-                        Err(reason)
-                    }
-                    _ => {
-                        Err(WifiConnectionFailure::ConnectionFailed)
-                    }
-                }
-            }
-            Err(_) => {
-                Err(WifiConnectionFailure::ConnectionFailed)
-            }
+            Ok(Response::Ok) => Ok(()),
+            Ok(Response::WifiConnectionFailure(reason)) => Err(reason),
+            _ => Err(WifiConnectionFailure::ConnectionFailed)
         }
     }
 
@@ -287,20 +236,11 @@ impl<'a, Tx> Adapter<'a, Tx>
         let command = Command::StartConnection(link_id,
                                                ConnectionType::TCP,
                                                remote);
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::Ok => {
-                        Ok(())
-                    }
-                    _ => {
-                        Err(())
-                    }
-                }
-            }
-            Err(_) => {
-                Err(())
-            }
+
+        if let Ok(Response::Ok) = self.send(command) {
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
@@ -310,55 +250,21 @@ impl<'a, Tx> Adapter<'a, Tx>
             len: buffer.len(),
         };
 
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::Ok => {
-                        //Ok(buffer.len())
-                        match self.wait_for_response() {
-                            Ok(response) => {
-                                match response {
-                                    Response::ReadyForData => {
-                                        info!( "sending data {}", buffer.len());
-                                        for b in buffer.iter() {
-                                            nb::block!( self.tx.write( *b ));
-                                        }
-                                        info!( "sent data {}", buffer.len());
-                                        match self.wait_for_response() {
-                                            Ok(response) => {
-                                                match response {
-                                                    Response::SendOk(len) => {
-                                                        Ok(len)
-                                                    }
-                                                    _ => {
-                                                        Err(())
-                                                    }
-                                                }
-                                            },
-                                            Err(_) => {
-                                                Err(())
-                                            },
-                                        }
-                                    }
-                                    _ => {
-                                        Err(())
-                                    }
-                                }
-                            },
-                            Err(_) => {
-                                Err(())
-                            },
-                        }
-                    }
-                    _ => {
-                        Err(())
-                    }
+        if let Ok(Response::Ok) = self.send(command) {
+            if let Ok(Response::ReadyForData) = self.wait_for_response() {
+                info!( "sending data {}", buffer.len());
+                for b in buffer.iter() {
+                    nb::block!( self.tx.write( *b ));
+                }
+
+                info!( "sent data {}", buffer.len());
+                if let Ok(Response::SendOk(len)) = self.wait_for_response() {
+                    return Ok(len)
                 }
             }
-            Err(_) => {
-                Err(())
-            }
         }
+
+        Err(())
     }
 
     pub fn read(&mut self, link_id: usize, buffer: &mut [u8]) -> Result<usize, ()> {
@@ -367,24 +273,12 @@ impl<'a, Tx> Adapter<'a, Tx>
             len: buffer.len(),
         };
 
-        match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::DataReceived(inbound, len) => {
-                        for (i, b) in inbound[0..len].iter().enumerate() {
-                            buffer[i] = *b;
-                        }
-                        Ok(len)
-                    }
-                    _ => {
-                        Err(())
-                    }
-                }
-            },
-            Err(_) => {
-                Err(())
-            },
+        if let Ok(Response::DataReceived(inbound, len)) = self.send(command) {
+            buffer[0..len].copy_from_slice(&inbound);
+            return Ok(len)
         }
+
+        Err(())
     }
 
 
