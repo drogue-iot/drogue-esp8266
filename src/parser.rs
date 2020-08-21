@@ -18,7 +18,6 @@ use crate::protocol::FirmwareInfo;
 use crate::protocol::IpAddresses;
 
 use crate::num::{
-    ascii_to_digit,
     atoi_u8,
     atoi_usize,
 };

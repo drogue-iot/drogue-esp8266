@@ -1,13 +1,8 @@
 use heapless::{
     String,
-    consts::{
-        U64,
-        U128,
-    },
+    consts::U128,
 };
-use crate::protocol::Response::{WifiDisconnect, WifiConnected};
 use drogue_network::{Ipv4Addr, SocketAddr, IpAddr};
-use heapless::i::Vec;
 use core::fmt::Write;
 
 /// Type of socket connection.
@@ -48,24 +43,24 @@ impl<'a> Command<'a> {
             }
             Command::JoinAp { ssid, password } => {
                 let mut s = String::from("AT+CWJAP_CUR=\"");
-                s.push_str(ssid);
-                s.push_str("\",\"");
-                s.push_str(password);
-                s.push_str("\"");
+                s.push_str(ssid).unwrap();
+                s.push_str("\",\"").unwrap();
+                s.push_str(password).unwrap();
+                s.push_str("\"").unwrap();
                 s
             }
             Command::StartConnection(link_id, connection_type, socket_addr) => {
                 let mut s = String::from("AT+CIPSTART=");
-                write!(s, "{},", link_id);
+                write!(s, "{},", link_id).unwrap();
                 match connection_type {
                     ConnectionType::TCP => {
-                        write!(s, "\"TCP\"");
+                        write!(s, "\"TCP\"").unwrap();
                     }
                     ConnectionType::UDP => {
-                        write!(s, "\"UDP\"");
+                        write!(s, "\"UDP\"").unwrap();
                     }
                 }
-                write!(s, ",");
+                write!(s, ",").unwrap();
                 match socket_addr.ip() {
                     IpAddr::V4(ip) => {
                         let octets = ip.octets();
@@ -75,7 +70,7 @@ impl<'a> Command<'a> {
                                octets[2],
                                octets[3],
                                socket_addr.port()
-                        );
+                        ).unwrap();
                     }
                     IpAddr::V6(_) => {
                         panic!("IPv6 not supported")
@@ -85,12 +80,12 @@ impl<'a> Command<'a> {
             }
             Command::Send { link_id, len } => {
                 let mut s = String::from("AT+CIPSEND=");
-                write!(s, "{},{}", link_id, len);
+                write!(s, "{},{}", link_id, len).unwrap();
                 s
             }
             Command::Receive { link_id, len } => {
                 let mut s = String::from("AT+CIPRECVDATA=");
-                write!(s, "{},{}", link_id, len);
+                write!(s, "{},{}", link_id, len).unwrap();
                 s
             }
         }

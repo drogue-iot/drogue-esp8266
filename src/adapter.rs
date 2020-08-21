@@ -6,21 +6,21 @@ use embedded_hal::{
 
 use crate::protocol::{Command, Response, WifiConnectionFailure, FirmwareInfo, IpAddresses, ConnectionType};
 
-use heapless::{i, spsc::{
-    Queue,
-    Consumer,
-    Producer,
-}, consts::{
-    U2,
-    U16,
-    U2048,
-}, Vec, ArrayLength};
+use heapless::{
+    spsc::{
+        Queue,
+        Consumer,
+    }, consts::{
+        U2,
+        U16,
+    },
+};
 
 use log::info;
 
 use crate::ingress::Ingress;
 use crate::network::NetworkStack;
-use drogue_network::{SocketAddr, Mode};
+use drogue_network::SocketAddr;
 use crate::adapter::SocketError::{SocketNotOpen, NoAvailableSockets, ReadError, WriteError};
 use crate::adapter::AdapterError::UnableToInitialize;
 
@@ -28,6 +28,7 @@ use crate::adapter::AdapterError::UnableToInitialize;
 pub enum AdapterError {
     Timeout,
     UnableToInitialize,
+    WriteError,
 }
 
 #[derive(Debug)]
@@ -65,8 +66,8 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
     mut rx: Rx,
     enable_pin: &mut EnablePin,
     reset_pin: &mut ResetPin,
-    mut response_queue: &'a mut Queue<Response, U2>,
-    mut notification_queue: &'a mut Queue<Response, U16>,
+    response_queue: &'a mut Queue<Response, U2>,
+    notification_queue: &'a mut Queue<Response, U16>,
 ) -> Result<Initialized<'a, Tx, Rx>, AdapterError>
     where
         Tx: Write<u8>,
@@ -92,15 +93,15 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
                 pos += 1;
                 if pos >= READY.len() && buffer[pos - READY.len()..pos] == READY {
                     log::debug!("adapter is ready");
-                    disable_echo(&mut tx, &mut rx);
-                    enable_mux(&mut tx, &mut rx);
-                    set_recv_mode(&mut tx, &mut rx);
-                    return Ok( build_adapter_and_ingress(tx, rx, response_queue, notification_queue ) )
+                    disable_echo(&mut tx, &mut rx)?;
+                    enable_mux(&mut tx, &mut rx)?;
+                    set_recv_mode(&mut tx, &mut rx)?;
+                    return Ok(build_adapter_and_ingress(tx, rx, response_queue, notification_queue));
                 }
             }
             Err(nb::Error::WouldBlock) => { continue; }
             Err(_) if counter > 10_000 => { break; }
-            Err(_) => { counter + 1; }
+            Err(_) => { counter += 1; }
         }
     }
 
@@ -108,10 +109,10 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
 }
 
 fn build_adapter_and_ingress<'a, Tx, Rx>(
-    mut tx: Tx,
-    mut rx: Rx,
-    mut response_queue: &'a mut Queue<Response, U2>,
-    mut notification_queue: &'a mut Queue<Response, U16>,
+    tx: Tx,
+    rx: Rx,
+    response_queue: &'a mut Queue<Response, U2>,
+    notification_queue: &'a mut Queue<Response, U16>,
 ) -> Initialized<'a, Tx, Rx>
     where
         Tx: Write<u8>,
@@ -187,13 +188,12 @@ fn wait_for_ok<Rx>(rx: &mut Rx) -> Result<(), Rx::Error>
     let mut pos = 0;
 
     loop {
-        if let b = nb::block!(rx.read())? {
-            buf[pos] = b;
-            pos += 1;
-            if buf[0..pos].ends_with(b"OK\r\n") {
-                log::info!( "matched OK");
-                return Ok(());
-            }
+        let b = nb::block!(rx.read())?;
+        buf[pos] = b;
+        pos += 1;
+        if buf[0..pos].ends_with(b"OK\r\n") {
+            log::info!( "matched OK");
+            return Ok(());
         }
     }
 }
@@ -205,19 +205,19 @@ struct Socket {
 
 impl Socket {
     pub fn is_closed(&self) -> bool {
-        if let SocketState::Closed = self.state { true } else { false }
+        matches!(self.state, SocketState::Closed)
     }
 
     pub fn is_half_closed(&self) -> bool {
-        if let SocketState::HalfClosed = self.state { true } else { false }
+        matches!(self.state, SocketState::HalfClosed)
     }
 
     pub fn is_open(&self) -> bool {
-        if let SocketState::Open = self.state { true } else { false }
+        matches!(self.state, SocketState::Open)
     }
 
     pub fn is_connected(&self) -> bool {
-        if let SocketState::Connected = self.state { true } else { false }
+        matches!(self.state, SocketState::Connected)
     }
 }
 
@@ -240,10 +240,10 @@ impl<'a, Tx> Adapter<'a, Tx>
 
         info!("writing command {}", core::str::from_utf8(bytes.as_bytes()).unwrap());
         for b in bytes.as_bytes().iter() {
-            nb::block!( self.tx.write(*b ) );
+            nb::block!( self.tx.write(*b ) ).map_err(|_| AdapterError::WriteError)?;
         }
-        nb::block!( self.tx.write( b'\r' ));
-        nb::block!( self.tx.write( b'\n' ));
+        nb::block!( self.tx.write( b'\r' )).map_err(|_| AdapterError::WriteError)?;
+        nb::block!( self.tx.write( b'\n' )).map_err(|_| AdapterError::WriteError)?;
         self.wait_for_response()
     }
 
@@ -266,10 +266,8 @@ impl<'a, Tx> Adapter<'a, Tx>
     pub fn get_firmware_info(&mut self) -> Result<FirmwareInfo, ()> {
         let command = Command::QueryFirmwareInfo;
 
-        if let Ok(response) = self.send(command) {
-            if let Response::FirmwareInfo(info) = response {
-                return Ok(info);
-            }
+        if let Ok(Response::FirmwareInfo((info))) = self.send(command) {
+            return Ok(info);
         }
 
         Err(())
@@ -279,10 +277,8 @@ impl<'a, Tx> Adapter<'a, Tx>
     pub fn get_ip_address(&mut self) -> Result<IpAddresses, ()> {
         let command = Command::QueryIpAddress;
 
-        if let Ok(response) = self.send(command) {
-            if let Response::IpAddresses(addresses) = response {
-                return Ok(addresses);
-            }
+        if let Ok(Response::IpAddresses(addresses)) = self.send(command) {
+            return Ok(addresses);
         }
 
         Err(())
@@ -398,7 +394,7 @@ impl<'a, Tx> Adapter<'a, Tx>
         if let Ok(response) = self.send(command) {
             if let Response::Ok = response {
                 if let Ok(response) = self.wait_for_response() {
-                    if let response = Response::ReadyForData {
+                    if let Response::ReadyForData = response {
                         info!("sending data {}", buffer.len());
                         for b in buffer.iter() {
                             nb::block!( self.tx.write( *b )).map_err(|_| nb::Error::from(WriteError))?;
@@ -447,7 +443,7 @@ impl<'a, Tx> Adapter<'a, Tx>
                         for (i, b) in inbound[0..len].iter().enumerate() {
                             buffer[i] = *b;
                         }
-                        self.sockets[link_id].available = self.sockets[link_id].available - len;
+                        self.sockets[link_id].available -= len;
                         Ok(len)
                     }
                     _ => {

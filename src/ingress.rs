@@ -1,4 +1,3 @@
-use heapless::Vec;
 use crate::{
     buffer::Buffer,
     protocol::Response,
@@ -10,10 +9,8 @@ use heapless::{
     },
     spsc::Producer,
 };
+
 use embedded_hal::serial::Read;
-
-use log::info;
-
 
 pub struct Ingress<'a, Rx>
     where
@@ -42,11 +39,12 @@ impl<'a, Rx> Ingress<'a, Rx>
     }
 
     /// Method to be called from USART or appropriate ISR.
-    pub fn isr(&mut self) {
+    pub fn isr(&mut self) -> Result<(), u8>
+    {
         if let Ok(d) = self.rx.read() {
-            self.write(d);
-            //info!( "{}", d as char);
+            self.write(d)?;
         }
+        Ok(())
     }
 
     fn write(&mut self, octet: u8) -> Result<(), u8> {
@@ -59,38 +57,38 @@ impl<'a, Rx> Ingress<'a, Rx>
     pub fn digest(&mut self) {
         let result = self.buffer.parse();
 
-        match result {
-            Ok(response) => {
-                match response {
-                    Response::None => {}
-                    Response::Ok |
-                    Response::Error |
-                    Response::FirmwareInfo(..) |
-                    Response::Connect(..) |
-                    Response::ReadyForData  |
-                    Response::DataReceived(..) |
-                    Response::SendOk(..) |
-                    Response::WifiConnectionFailure(..) |
-                    Response::IpAddresses(..) => {
-                        self.response_producer.enqueue(response);
-                    }
-                    Response::Closed(..) |
-                    Response::DataAvailable { .. } => {
-                        self.notification_producer.enqueue(response);
-                    }
-                    Response::WifiConnected => {
-                        log::info!("wifi connected");
-                    }
-                    Response::WifiDisconnect => {
-                        log::info!("wifi disconnect");
-                    }
-                    Response::GotIp => {
-                        log::info!("wifi got ip");
+        if let Ok(response) = result {
+            match response {
+                Response::None => {}
+                Response::Ok |
+                Response::Error |
+                Response::FirmwareInfo(..) |
+                Response::Connect(..) |
+                Response::ReadyForData |
+                Response::DataReceived(..) |
+                Response::SendOk(..) |
+                Response::WifiConnectionFailure(..) |
+                Response::IpAddresses(..) => {
+                    if let Err(response) = self.response_producer.enqueue(response) {
+                        log::error!( "failed to enqueue response {:?}", response);
                     }
                 }
+                Response::Closed(..) |
+                Response::DataAvailable { .. } => {
+                    if let Err(response) = self.notification_producer.enqueue(response) {
+                        log::error!( "failed to enqueue notification {:?}", response);
+                    }
+                }
+                Response::WifiConnected => {
+                    log::info!("wifi connected");
+                }
+                Response::WifiDisconnect => {
+                    log::info!("wifi disconnect");
+                }
+                Response::GotIp => {
+                    log::info!("wifi got ip");
+                }
             }
-
-            Err(e) => {}
         }
     }
 }

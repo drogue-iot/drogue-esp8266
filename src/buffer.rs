@@ -1,8 +1,6 @@
 use crate::parser;
-use nom::IResult;
 use crate::protocol::Response;
-use nom::error::ErrorKind;
-use moveslice::{Moveslice, Error};
+use moveslice::Moveslice;
 
 pub(crate) struct Buffer {
     buffer: [u8; 4096],
@@ -38,8 +36,7 @@ impl Buffer {
             return Ok(Response::None);
         }
         self.needs_parse = false;
-        log::info!("parsing [{}]", core::str::from_utf8(&self.buffer[0..self.pos]).unwrap());
-        let result = parser::parse(&self.buffer[0..self.pos]);
+        log::trace!("parsing [{}]", core::str::from_utf8(&self.buffer[0..self.pos]).unwrap());
         if let Ok((remainder, response)) = parser::parse(&self.buffer[0..self.pos]) {
             let len = remainder.len();
             if len > 0 {

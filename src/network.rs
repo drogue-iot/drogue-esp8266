@@ -1,15 +1,13 @@
-use crate::adapter::{Adapter, SocketError};
+use crate::adapter::{
+    Adapter,
+    SocketError
+};
 use embedded_hal::{
-    digital::v2::OutputPin,
     serial::Write,
 };
 
-use heapless::ArrayLength;
-use heapless::Vec;
 use drogue_network::{TcpStack, SocketAddr, Mode};
 use core::cell::RefCell;
-use crate::protocol::{Command, ConnectionType};
-use crate::adapter::SocketError::{NoAvailableSockets, UnableToOpen, WriteError, ReadError};
 
 /// NetworkStack for and ESP8266
 pub struct NetworkStack<'a, Tx>
@@ -32,7 +30,7 @@ impl<'a, Tx> NetworkStack<'a, Tx>
 
 /// Handle to a socket.
 #[derive(Debug)]
-pub struct TcpSocket{
+pub struct TcpSocket {
     link_id: usize,
     mode: Mode,
 }
@@ -42,11 +40,11 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
         Tx: Write<u8>,
 {
     type TcpSocket = TcpSocket;
-    type Error = super::adapter::SocketError;
+    type Error = SocketError;
 
     fn open(&self, mode: Mode) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
-        Ok( TcpSocket{ link_id: adapter.open()?, mode })
+        Ok(TcpSocket { link_id: adapter.open()?, mode })
     }
 
     fn connect(&self, socket: Self::TcpSocket, remote: SocketAddr) -> Result<Self::TcpSocket, Self::Error> {
@@ -63,7 +61,7 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        Ok(adapter.write(socket.link_id, buffer).map_err(|e| nb::Error::from(e))?)
+        Ok(adapter.write(socket.link_id, buffer).map_err(nb::Error::from)?)
     }
 
     fn read(&self, socket: &mut Self::TcpSocket, buffer: &mut [u8]) -> nb::Result<usize, Self::Error> {
@@ -71,14 +69,14 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
 
         match socket.mode {
             Mode::Blocking => {
-                nb::block!(adapter.read(socket.link_id, buffer)).map_err(|e| nb::Error::from(e))
-            },
+                nb::block!(adapter.read(socket.link_id, buffer)).map_err(nb::Error::from)
+            }
             Mode::NonBlocking => {
                 adapter.read(socket.link_id, buffer)
-            },
+            }
             Mode::Timeout(_) => {
                 unimplemented!()
-            },
+            }
         }
     }
 
