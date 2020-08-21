@@ -57,7 +57,8 @@ where
     }
 
     fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
-        unimplemented!()
+        let adapter = self.adapter.borrow();
+        adapter.is_connected(socket.link_id)
     }
 
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {

@@ -59,11 +59,11 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
     response_queue: &'a mut Queue<Response, U2>,
     notification_queue: &'a mut Queue<Response, U16>,
 ) -> Result<Initialized<'a, Tx, Rx>, AdapterError>
-where
-    Tx: Write<u8>,
-    Rx: Read<u8>,
-    EnablePin: OutputPin,
-    ResetPin: OutputPin,
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
+        EnablePin: OutputPin,
+        ResetPin: OutputPin,
 {
     let mut buffer: [u8; 1024] = [0; 1024];
     let mut pos = 0;
@@ -119,9 +119,9 @@ fn build_adapter_and_ingress<'a, Tx, Rx>(
     response_queue: &'a mut Queue<Response, U2>,
     notification_queue: &'a mut Queue<Response, U16>,
 ) -> Initialized<'a, Tx, Rx>
-where
-    Tx: Write<u8>,
-    Rx: Read<u8>,
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
 {
     let (response_producer, response_consumer) = response_queue.split();
     let (notification_producer, notification_consumer) = notification_queue.split();
@@ -138,32 +138,17 @@ where
 
 fn initialize_sockets() -> [Socket; 5] {
     [
-        Socket {
-            state: SocketState::Closed,
-            available: 0,
-        },
-        Socket {
-            state: SocketState::Closed,
-            available: 0,
-        },
-        Socket {
-            state: SocketState::Closed,
-            available: 0,
-        },
-        Socket {
-            state: SocketState::Closed,
-            available: 0,
-        },
-        Socket {
-            state: SocketState::Closed,
-            available: 0,
-        },
+        Socket::new(),
+        Socket::new(),
+        Socket::new(),
+        Socket::new(),
+        Socket::new(),
     ]
 }
 
 fn write_command<Tx>(tx: &mut Tx, cmd: &[u8]) -> Result<(), Tx::Error>
-where
-    Tx: Write<u8>,
+    where
+        Tx: Write<u8>,
 {
     for b in cmd.iter() {
         nb::block!(tx.write(*b))?;
@@ -172,35 +157,35 @@ where
 }
 
 fn disable_echo<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-where
-    Tx: Write<u8>,
-    Rx: Read<u8>,
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
 {
     write_command(tx, b"ATE0\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn enable_mux<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-where
-    Tx: Write<u8>,
-    Rx: Read<u8>,
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
 {
     write_command(tx, b"AT+CIPMUX=1\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn set_recv_mode<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-where
-    Tx: Write<u8>,
-    Rx: Read<u8>,
+    where
+        Tx: Write<u8>,
+        Rx: Read<u8>,
 {
     write_command(tx, b"AT+CIPRECVMODE=1\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn wait_for_ok<Rx>(rx: &mut Rx) -> Result<(), Rx::Error>
-where
-    Rx: Read<u8>,
+    where
+        Rx: Read<u8>,
 {
     let mut buf: [u8; 64] = [0; 64];
     let mut pos = 0;
@@ -222,26 +207,37 @@ struct Socket {
 }
 
 impl Socket {
+    fn new() -> Self {
+        Self {
+            state: SocketState::Closed,
+            available: 0,
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn is_closed(&self) -> bool {
         matches!(self.state, SocketState::Closed)
     }
 
+    #[allow(dead_code)]
     pub fn is_half_closed(&self) -> bool {
         matches!(self.state, SocketState::HalfClosed)
     }
 
+    #[allow(dead_code)]
     pub fn is_open(&self) -> bool {
         matches!(self.state, SocketState::Open)
     }
 
+    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         matches!(self.state, SocketState::Connected)
     }
 }
 
 pub struct Adapter<'a, Tx>
-where
-    Tx: Write<u8>,
+    where
+        Tx: Write<u8>,
 {
     tx: Tx,
     response_consumer: Consumer<'a, Response, U2>,
@@ -250,8 +246,8 @@ where
 }
 
 impl<'a, Tx> Adapter<'a, Tx>
-where
-    Tx: Write<u8>,
+    where
+        Tx: Write<u8>,
 {
     fn send<'c>(&mut self, command: Command<'c>) -> Result<Response, AdapterError> {
         let bytes = command.as_bytes();
@@ -271,14 +267,8 @@ where
     fn wait_for_response(&mut self) -> Result<Response, AdapterError> {
         loop {
             // busy loop until a response is received.
-            let response = self.response_consumer.dequeue();
-            match response {
-                None => {
-                    continue;
-                }
-                Some(response) => {
-                    return Ok(response);
-                }
+            if let Some(response) = self.response_consumer.dequeue() {
+                return Ok(response);
             }
         }
     }
@@ -287,7 +277,7 @@ where
     pub fn get_firmware_info(&mut self) -> Result<FirmwareInfo, ()> {
         let command = Command::QueryFirmwareInfo;
 
-        if let Ok(Response::FirmwareInfo((info))) = self.send(command) {
+        if let Ok(Response::FirmwareInfo(info)) = self.send(command) {
             return Ok(info);
         }
 
@@ -318,16 +308,16 @@ where
     ) -> Result<(), WifiConnectionFailure> {
         let command = Command::JoinAp { ssid, password };
 
-        if let Ok(response) = self.send(command) {
-            if let Response::Ok = response {
+        match self.send(command) {
+            Ok(Response::Ok) => {
                 Ok(())
-            } else if let Response::WifiConnectionFailure(reason) = response {
+            }
+            Ok(Response::WifiConnectionFailure(reason)) => {
                 Err(reason)
-            } else {
+            }
+            _ => {
                 Err(WifiConnectionFailure::ConnectionFailed)
             }
-        } else {
-            Err(WifiConnectionFailure::ConnectionFailed)
         }
     }
 
@@ -395,11 +385,9 @@ where
         remote: SocketAddr,
     ) -> Result<(), SocketError> {
         let command = Command::StartConnection(link_id, ConnectionType::TCP, remote);
-        if let Ok(response) = self.send(command) {
-            if let Response::Connect(..) = response {
-                self.sockets[link_id].state = SocketState::Connected;
-                return Ok(());
-            }
+        if let Ok(Response::Connect(..)) = self.send(command) {
+            self.sockets[link_id].state = SocketState::Connected;
+            return Ok(());
         }
 
         Err(SocketError::UnableToOpen)
@@ -446,18 +434,16 @@ where
     ) -> nb::Result<usize, SocketError> {
         self.process_notifications();
 
-        if let SocketState::Closed = self.sockets[link_id].state {
+        if matches!( self.sockets[link_id].state, SocketState::Closed ) {
             return Err(nb::Error::Other(SocketNotOpen));
         }
 
-        if let SocketState::HalfClosed = self.sockets[link_id].state {
-            if self.sockets[link_id].available == 0 {
-                return Err(nb::Error::Other(SocketNotOpen));
-            }
-        }
-
         if self.sockets[link_id].available == 0 {
-            return Err(nb::Error::WouldBlock);
+            if matches!( self.sockets[link_id].state, SocketState::HalfClosed ) {
+                return Err(nb::Error::Other(SocketNotOpen));
+            } else {
+                return Err(nb::Error::WouldBlock);
+            }
         }
 
         info!("read {} with {}", link_id, self.sockets[link_id].available);
@@ -467,18 +453,31 @@ where
             len: buffer.len(),
         };
 
-        match self.send(command) {
-            Ok(response) => match response {
-                Response::DataReceived(inbound, len) => {
-                    for (i, b) in inbound[0..len].iter().enumerate() {
-                        buffer[i] = *b;
-                    }
-                    self.sockets[link_id].available -= len;
-                    Ok(len)
-                }
-                _ => Err(nb::Error::Other(ReadError)),
-            },
-            Err(_) => Err(nb::Error::Other(ReadError)),
+        if let Ok(Response::DataReceived(inbound, len)) = self.send(command) {
+            for (i, b) in inbound[0..len].iter().enumerate() {
+                buffer[i] = *b;
+            }
+            self.sockets[link_id].available -= len;
+            Ok(len)
+        } else {
+            Err(nb::Error::Other(ReadError))
         }
+    }
+
+    pub(crate) fn is_connected(&self, link_id: usize) -> Result<bool,SocketError> {
+        Ok( match self.sockets[link_id].state {
+            SocketState::HalfClosed => {
+                self.sockets[link_id].available > 0
+            },
+            SocketState::Closed => {
+                false
+            },
+            SocketState::Open => {
+                false
+            },
+            SocketState::Connected => {
+                true
+            },
+        })
     }
 }
