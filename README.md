@@ -9,6 +9,9 @@ To use, you must configure your USART as 115,200 bps and 8-N-1, along with selec
 By using the `initialize(...)` function, you will get a 2-tuple back, container the `Adapter` and an `Ingress` object:
 
 ```rust
+static mut RESPONSE_QUEUE: Queue<Response, U2> = Queue(i::Queue::new());
+static mut NOTIFICATION_QUEUE: Queue<Response, U16> = Queue(i::Queue::new());
+
 let (adapter, ingress) = esp8266::initialize(
     tx, rx,
     &mut en, &mut reset,
