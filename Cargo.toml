@@ -15,8 +15,8 @@ heapless = "0.5.5"
 log = "0.4.11"
 moveslice = "2.0.1"
 
-[dependencies.embedded-nal]
-path = "../embedded-nal"
+[dependencies.drogue-network]
+path = "../drogue-network"
 
 [dependencies.nom]
 version= "5.1.2"

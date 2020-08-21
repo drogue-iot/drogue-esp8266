@@ -10,7 +10,7 @@ use nom::take_until;
 use nom::character::streaming::digit1;
 use nom::IResult;
 
-use embedded_nal::Ipv4Addr;
+use drogue_network::Ipv4Addr;
 
 use crate::protocol::Response;
 use crate::protocol::WifiConnectionFailure;

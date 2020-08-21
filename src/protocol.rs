@@ -6,16 +6,18 @@ use heapless::{
     },
 };
 use crate::protocol::Response::{WifiDisconnect, WifiConnected};
-use embedded_nal::{Ipv4Addr, SocketAddr, IpAddr};
+use drogue_network::{Ipv4Addr, SocketAddr, IpAddr};
 use heapless::i::Vec;
 use core::fmt::Write;
 
+/// Type of socket connection.
 #[derive(Debug)]
 pub enum ConnectionType {
     TCP,
     UDP,
 }
 
+/// Commands to be sent to the ESP board.
 #[derive(Debug)]
 pub enum Command<'a> {
     QueryFirmwareInfo,
@@ -55,8 +57,6 @@ impl<'a> Command<'a> {
             Command::StartConnection(link_id, connection_type, socket_addr) => {
                 let mut s = String::from("AT+CIPSTART=");
                 write!(s, "{},", link_id);
-                //let mut s: heapless::Vec<u8, U128> = heapless::Vec::new();
-                //let s = s.into_bytes();
                 match connection_type {
                     ConnectionType::TCP => {
                         write!(s, "\"TCP\"");
@@ -97,6 +97,7 @@ impl<'a> Command<'a> {
     }
 }
 
+/// Responses (including unsolicited) which may be parsed from the board.
 #[derive(Debug)]
 pub enum Response {
     None,
@@ -119,6 +120,7 @@ pub enum Response {
     Closed(usize),
 }
 
+/// IP addresses for the board, including its own address, netmask and gateway.
 #[derive(Debug)]
 pub struct IpAddresses {
     pub ip: Ipv4Addr,
@@ -126,6 +128,7 @@ pub struct IpAddresses {
     pub netmask: Ipv4Addr,
 }
 
+/// Version information for the ESP board.
 #[derive(Debug)]
 pub struct FirmwareInfo {
     pub major: u8,
@@ -134,6 +137,8 @@ pub struct FirmwareInfo {
     pub build: u8,
 }
 
+
+/// Reasons for Wifi access-point join failures.
 #[derive(Debug)]
 pub enum WifiConnectionFailure {
     Timeout,

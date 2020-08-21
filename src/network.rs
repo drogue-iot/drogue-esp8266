@@ -1,4 +1,4 @@
-use crate::adapter::Adapter;
+use crate::adapter::{Adapter, SocketError};
 use embedded_hal::{
     digital::v2::OutputPin,
     serial::Write,
@@ -6,123 +6,54 @@ use embedded_hal::{
 
 use heapless::ArrayLength;
 use heapless::Vec;
-use embedded_nal::{TcpStack, SocketAddr, Mode};
+use drogue_network::{TcpStack, SocketAddr, Mode};
 use core::cell::RefCell;
-use crate::network::Error::{SocketNotOpen, UnableToOpen, WriteError, ReadError};
 use crate::protocol::{Command, ConnectionType};
+use crate::adapter::SocketError::{NoAvailableSockets, UnableToOpen, WriteError, ReadError};
 
-#[derive(Debug)]
-pub enum SocketState {
-    Closed,
-    Open,
-    Connected,
-}
-
-pub struct Socket<N>
-    where
-        N: ArrayLength<u8>
-{
-    state: SocketState,
-    inbound_buffer: Vec<u8, N>,
-}
-
-impl<N> Socket<N>
-    where
-        N: ArrayLength<u8>
-{
-    pub fn new() -> Self {
-        Self {
-            state: SocketState::Closed,
-            inbound_buffer: Vec::new(),
-        }
-    }
-}
-
-pub struct Sockets<NumSockets, BufferSize>
-    where
-        NumSockets: ArrayLength<Socket<BufferSize>>,
-        BufferSize: ArrayLength<u8>,
-{
-    pub sockets: Vec<Socket<BufferSize>, NumSockets>,
-}
-
-pub struct NetworkStack<'a, Tx, NumSockets, InboundBufSize>
+/// NetworkStack for and ESP8266
+pub struct NetworkStack<'a, Tx>
     where
         Tx: Write<u8>,
-        NumSockets: ArrayLength<Socket<InboundBufSize>>,
-        InboundBufSize: ArrayLength<u8>,
 {
     adapter: RefCell<Adapter<'a, Tx>>,
-    sockets: RefCell<&'a mut Sockets<NumSockets, InboundBufSize>>,
 }
 
-impl<'a, Tx, NumSockets, InboundBufSize> NetworkStack<'a, Tx, NumSockets, InboundBufSize>
+impl<'a, Tx> NetworkStack<'a, Tx>
     where
         Tx: Write<u8>,
-        NumSockets: ArrayLength<Socket<InboundBufSize>>,
-        InboundBufSize: ArrayLength<u8>,
 {
-    pub(crate) fn new(adapter: Adapter<'a, Tx>, sockets: &'a mut Sockets<NumSockets, InboundBufSize>) -> Self {
+    pub(crate) fn new(adapter: Adapter<'a, Tx>) -> Self {
         Self {
             adapter: RefCell::new(adapter),
-            sockets: RefCell::new(sockets),
         }
     }
 }
 
+/// Handle to a socket.
 #[derive(Debug)]
-pub struct TcpSocket(usize);
-
-#[derive(Debug)]
-pub enum Error {
-    NoAvailableSockets,
-    SocketNotOpen,
-    UnableToOpen,
-    WriteError,
-    ReadError,
+pub struct TcpSocket{
+    link_id: usize,
+    mode: Mode,
 }
 
-impl<'a, Tx, NumSockets, InboundBufSize> TcpStack for NetworkStack<'a, Tx, NumSockets, InboundBufSize>
+impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
     where
         Tx: Write<u8>,
-        NumSockets: ArrayLength<Socket<InboundBufSize>>,
-        InboundBufSize: ArrayLength<u8>,
 {
     type TcpSocket = TcpSocket;
-    type Error = Error;
+    type Error = super::adapter::SocketError;
 
     fn open(&self, mode: Mode) -> Result<Self::TcpSocket, Self::Error> {
-        let mut sockets = self.sockets.borrow_mut();
-        let socket = sockets.sockets.iter_mut().enumerate().find(|e| {
-            if let SocketState::Closed = e.1.state {
-                true
-            } else {
-                false
-            }
-        });
-
-        match socket {
-            None => {
-                Err(Error::NoAvailableSockets)
-            }
-            Some(socket) => {
-                socket.1.state = SocketState::Open;
-                Ok(TcpSocket(socket.0))
-            }
-        }
+        let mut adapter = self.adapter.borrow_mut();
+        Ok( TcpSocket{ link_id: adapter.open()?, mode })
     }
 
     fn connect(&self, socket: Self::TcpSocket, remote: SocketAddr) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        match adapter.connect_tcp(socket.0, remote) {
-            Ok(_) => {
-                Ok(socket)
-            }
-            Err(_) => {
-                Err(UnableToOpen)
-            }
-        }
+        adapter.connect_tcp(socket.link_id, remote)?;
+        Ok(socket)
     }
 
     fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
@@ -132,47 +63,27 @@ impl<'a, Tx, NumSockets, InboundBufSize> TcpStack for NetworkStack<'a, Tx, NumSo
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        match adapter.write(socket.0, buffer) {
-            Ok(_) => {
-                Ok(buffer.len())
-            }
-            Err(_) => {
-                nb::Result::Err(nb::Error::Other(WriteError))
-            }
-        }
+        Ok(adapter.write(socket.link_id, buffer).map_err(|e| nb::Error::from(e))?)
     }
 
     fn read(&self, socket: &mut Self::TcpSocket, buffer: &mut [u8]) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
-        log::info!("try read");
-        let result = adapter.read(socket.0, buffer);
-        let result = match result {
-            Ok(len) => {
-                Ok(len)
-            }
-            Err(_) => {
-                Err(nb::Error::Other(ReadError))
-            }
-        };
-        log::info!("read done");
-        result
+
+        match socket.mode {
+            Mode::Blocking => {
+                nb::block!(adapter.read(socket.link_id, buffer)).map_err(|e| nb::Error::from(e))
+            },
+            Mode::NonBlocking => {
+                adapter.read(socket.link_id, buffer)
+            },
+            Mode::Timeout(_) => {
+                unimplemented!()
+            },
+        }
     }
 
     fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {
-        let mut sockets = self.sockets.borrow_mut();
-        let mut socket = sockets.sockets.get_mut(socket.0).unwrap();
-        match socket.state {
-            SocketState::Closed => {
-                Err(Error::SocketNotOpen)
-            }
-            SocketState::Open => {
-                socket.state = SocketState::Closed;
-                Ok(())
-            }
-            SocketState::Connected => {
-                socket.state = SocketState::Closed;
-                Ok(())
-            }
-        }
+        let mut adapter = self.adapter.borrow_mut();
+        adapter.close(socket.link_id)
     }
 }

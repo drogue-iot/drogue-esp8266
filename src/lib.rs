@@ -11,12 +11,6 @@ mod num;
 
 pub use adapter::initialize;
 
-#[derive(Debug)]
-pub enum Error {
-    Timeout,
-    UnableToInitialize,
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
