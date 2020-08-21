@@ -1,20 +1,14 @@
-use crate::{
-    buffer::Buffer,
-    protocol::Response,
-};
+use crate::{buffer::Buffer, protocol::Response};
 use heapless::{
-    consts::{
-        U2,
-        U16,
-    },
+    consts::{U16, U2},
     spsc::Producer,
 };
 
 use embedded_hal::serial::Read;
 
 pub struct Ingress<'a, Rx>
-    where
-        Rx: Read<u8>,
+where
+    Rx: Read<u8>,
 {
     rx: Rx,
     response_producer: Producer<'a, Response, U2>,
@@ -23,12 +17,13 @@ pub struct Ingress<'a, Rx>
 }
 
 impl<'a, Rx> Ingress<'a, Rx>
-    where
-        Rx: Read<u8>,
+where
+    Rx: Read<u8>,
 {
-    pub fn new(rx: Rx,
-               response_producer: Producer<'a, Response, U2>,
-               notification_producer: Producer<'a, Response, U16>,
+    pub fn new(
+        rx: Rx,
+        response_producer: Producer<'a, Response, U2>,
+        notification_producer: Producer<'a, Response, U16>,
     ) -> Self {
         Self {
             rx,
@@ -39,8 +34,7 @@ impl<'a, Rx> Ingress<'a, Rx>
     }
 
     /// Method to be called from USART or appropriate ISR.
-    pub fn isr(&mut self) -> Result<(), u8>
-    {
+    pub fn isr(&mut self) -> Result<(), u8> {
         if let Ok(d) = self.rx.read() {
             self.write(d)?;
         }
@@ -60,23 +54,22 @@ impl<'a, Rx> Ingress<'a, Rx>
         if let Ok(response) = result {
             match response {
                 Response::None => {}
-                Response::Ok |
-                Response::Error |
-                Response::FirmwareInfo(..) |
-                Response::Connect(..) |
-                Response::ReadyForData |
-                Response::DataReceived(..) |
-                Response::SendOk(..) |
-                Response::WifiConnectionFailure(..) |
-                Response::IpAddresses(..) => {
+                Response::Ok
+                | Response::Error
+                | Response::FirmwareInfo(..)
+                | Response::Connect(..)
+                | Response::ReadyForData
+                | Response::DataReceived(..)
+                | Response::SendOk(..)
+                | Response::WifiConnectionFailure(..)
+                | Response::IpAddresses(..) => {
                     if let Err(response) = self.response_producer.enqueue(response) {
-                        log::error!( "failed to enqueue response {:?}", response);
+                        log::error!("failed to enqueue response {:?}", response);
                     }
                 }
-                Response::Closed(..) |
-                Response::DataAvailable { .. } => {
+                Response::Closed(..) | Response::DataAvailable { .. } => {
                     if let Err(response) = self.notification_producer.enqueue(response) {
-                        log::error!( "failed to enqueue notification {:?}", response);
+                        log::error!("failed to enqueue notification {:?}", response);
                     }
                 }
                 Response::WifiConnected => {

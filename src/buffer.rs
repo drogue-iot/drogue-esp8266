@@ -36,7 +36,10 @@ impl Buffer {
             return Ok(Response::None);
         }
         self.needs_parse = false;
-        log::trace!("parsing [{}]", core::str::from_utf8(&self.buffer[0..self.pos]).unwrap());
+        log::trace!(
+            "parsing [{}]",
+            core::str::from_utf8(&self.buffer[0..self.pos]).unwrap()
+        );
         if let Ok((remainder, response)) = parser::parse(&self.buffer[0..self.pos]) {
             let len = remainder.len();
             if len > 0 {

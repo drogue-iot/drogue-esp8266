@@ -1,25 +1,20 @@
-use crate::adapter::{
-    Adapter,
-    SocketError
-};
-use embedded_hal::{
-    serial::Write,
-};
+use crate::adapter::{Adapter, SocketError};
+use embedded_hal::serial::Write;
 
-use drogue_network::{TcpStack, SocketAddr, Mode};
 use core::cell::RefCell;
+use drogue_network::{Mode, SocketAddr, TcpStack};
 
 /// NetworkStack for and ESP8266
 pub struct NetworkStack<'a, Tx>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     adapter: RefCell<Adapter<'a, Tx>>,
 }
 
 impl<'a, Tx> NetworkStack<'a, Tx>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     pub(crate) fn new(adapter: Adapter<'a, Tx>) -> Self {
         Self {
@@ -36,18 +31,25 @@ pub struct TcpSocket {
 }
 
 impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     type TcpSocket = TcpSocket;
     type Error = SocketError;
 
     fn open(&self, mode: Mode) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
-        Ok(TcpSocket { link_id: adapter.open()?, mode })
+        Ok(TcpSocket {
+            link_id: adapter.open()?,
+            mode,
+        })
     }
 
-    fn connect(&self, socket: Self::TcpSocket, remote: SocketAddr) -> Result<Self::TcpSocket, Self::Error> {
+    fn connect(
+        &self,
+        socket: Self::TcpSocket,
+        remote: SocketAddr,
+    ) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
         adapter.connect_tcp(socket.link_id, remote)?;
@@ -61,22 +63,24 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        Ok(adapter.write(socket.link_id, buffer).map_err(nb::Error::from)?)
+        Ok(adapter
+            .write(socket.link_id, buffer)
+            .map_err(nb::Error::from)?)
     }
 
-    fn read(&self, socket: &mut Self::TcpSocket, buffer: &mut [u8]) -> nb::Result<usize, Self::Error> {
+    fn read(
+        &self,
+        socket: &mut Self::TcpSocket,
+        buffer: &mut [u8],
+    ) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
         match socket.mode {
             Mode::Blocking => {
                 nb::block!(adapter.read(socket.link_id, buffer)).map_err(nb::Error::from)
             }
-            Mode::NonBlocking => {
-                adapter.read(socket.link_id, buffer)
-            }
-            Mode::Timeout(_) => {
-                unimplemented!()
-            }
+            Mode::NonBlocking => adapter.read(socket.link_id, buffer),
+            Mode::Timeout(_) => unimplemented!(),
         }
     }
 

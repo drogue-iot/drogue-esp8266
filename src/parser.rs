@@ -1,27 +1,23 @@
-use nom::named;
-use nom::do_parse;
-use nom::tuple;
-use nom::tag;
-use nom::opt;
 use nom::alt;
-use nom::take;
 use nom::char;
-use nom::take_until;
 use nom::character::streaming::digit1;
+use nom::do_parse;
+use nom::named;
+use nom::opt;
+use nom::tag;
+use nom::take;
+use nom::take_until;
+use nom::tuple;
 use nom::IResult;
 
 use drogue_network::Ipv4Addr;
 
-use crate::protocol::Response;
-use crate::protocol::WifiConnectionFailure;
 use crate::protocol::FirmwareInfo;
 use crate::protocol::IpAddresses;
+use crate::protocol::Response;
+use crate::protocol::WifiConnectionFailure;
 
-use crate::num::{
-    atoi_u8,
-    atoi_usize,
-};
-
+use crate::num::{atoi_u8, atoi_usize};
 
 fn parse_u8(input: &[u8]) -> IResult<&[u8], u8> {
     let (input, digits) = digit1(input)?;
@@ -162,7 +158,6 @@ named!(
     )
 );
 
-
 #[rustfmt::skip]
 named!(
     pub ip_addresses<Response>,
@@ -282,7 +277,6 @@ named!(
         } )
     )
 );
-
 
 named!(
     pub parse<Response>,

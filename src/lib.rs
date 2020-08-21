@@ -1,13 +1,12 @@
-
 #![no_std]
 
 pub mod adapter;
-pub mod protocol;
+mod buffer;
 pub mod ingress;
 pub mod network;
-mod buffer;
-mod parser;
 mod num;
+mod parser;
+pub mod protocol;
 
 pub use adapter::initialize;
 

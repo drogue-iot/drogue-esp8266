@@ -1,6 +1,4 @@
-
-pub(crate) fn ascii_to_digit(character: u8) -> Option<u8>
-{
+pub(crate) fn ascii_to_digit(character: u8) -> Option<u8> {
     match character {
         b'0' => Some(0),
         b'1' => Some(1),

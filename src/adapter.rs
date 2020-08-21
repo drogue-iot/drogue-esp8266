@@ -1,28 +1,21 @@
-use embedded_hal::{
-    digital::v2::OutputPin,
-    serial::Read,
-    serial::Write,
+use embedded_hal::{digital::v2::OutputPin, serial::Read, serial::Write};
+
+use crate::protocol::{
+    Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure,
 };
 
-use crate::protocol::{Command, Response, WifiConnectionFailure, FirmwareInfo, IpAddresses, ConnectionType};
-
 use heapless::{
-    spsc::{
-        Queue,
-        Consumer,
-    }, consts::{
-        U2,
-        U16,
-    },
+    consts::{U16, U2},
+    spsc::{Consumer, Queue},
 };
 
 use log::info;
 
+use crate::adapter::AdapterError::UnableToInitialize;
+use crate::adapter::SocketError::{NoAvailableSockets, ReadError, SocketNotOpen, WriteError};
 use crate::ingress::Ingress;
 use crate::network::NetworkStack;
 use drogue_network::SocketAddr;
-use crate::adapter::SocketError::{SocketNotOpen, NoAvailableSockets, ReadError, WriteError};
-use crate::adapter::AdapterError::UnableToInitialize;
 
 #[derive(Debug)]
 pub enum AdapterError {
@@ -48,10 +41,7 @@ enum SocketState {
     Connected,
 }
 
-type Initialized<'a, Tx, Rx> = (
-    Adapter<'a, Tx>,
-    Ingress<'a, Rx>
-);
+type Initialized<'a, Tx, Rx> = (Adapter<'a, Tx>, Ingress<'a, Rx>);
 
 /// Initialize an ESP8266 board for usage as a Wifi-offload device.
 ///
@@ -69,11 +59,11 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
     response_queue: &'a mut Queue<Response, U2>,
     notification_queue: &'a mut Queue<Response, U16>,
 ) -> Result<Initialized<'a, Tx, Rx>, AdapterError>
-    where
-        Tx: Write<u8>,
-        Rx: Read<u8>,
-        EnablePin: OutputPin,
-        ResetPin: OutputPin,
+where
+    Tx: Write<u8>,
+    Rx: Read<u8>,
+    EnablePin: OutputPin,
+    ResetPin: OutputPin,
 {
     let mut buffer: [u8; 1024] = [0; 1024];
     let mut pos = 0;
@@ -82,8 +72,12 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
 
     let mut counter = 0;
 
-    enable_pin.set_high().map_err(|_| AdapterError::UnableToInitialize)?;
-    reset_pin.set_high().map_err(|_| AdapterError::UnableToInitialize)?;
+    enable_pin
+        .set_high()
+        .map_err(|_| AdapterError::UnableToInitialize)?;
+    reset_pin
+        .set_high()
+        .map_err(|_| AdapterError::UnableToInitialize)?;
 
     loop {
         let result = rx.read();
@@ -96,12 +90,23 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
                     disable_echo(&mut tx, &mut rx)?;
                     enable_mux(&mut tx, &mut rx)?;
                     set_recv_mode(&mut tx, &mut rx)?;
-                    return Ok(build_adapter_and_ingress(tx, rx, response_queue, notification_queue));
+                    return Ok(build_adapter_and_ingress(
+                        tx,
+                        rx,
+                        response_queue,
+                        notification_queue,
+                    ));
                 }
             }
-            Err(nb::Error::WouldBlock) => { continue; }
-            Err(_) if counter > 10_000 => { break; }
-            Err(_) => { counter += 1; }
+            Err(nb::Error::WouldBlock) => {
+                continue;
+            }
+            Err(_) if counter > 10_000 => {
+                break;
+            }
+            Err(_) => {
+                counter += 1;
+            }
         }
     }
 
@@ -114,9 +119,9 @@ fn build_adapter_and_ingress<'a, Tx, Rx>(
     response_queue: &'a mut Queue<Response, U2>,
     notification_queue: &'a mut Queue<Response, U16>,
 ) -> Initialized<'a, Tx, Rx>
-    where
-        Tx: Write<u8>,
-        Rx: Read<u8>,
+where
+    Tx: Write<u8>,
+    Rx: Read<u8>,
 {
     let (response_producer, response_consumer) = response_queue.split();
     let (notification_producer, notification_consumer) = notification_queue.split();
@@ -127,25 +132,38 @@ fn build_adapter_and_ingress<'a, Tx, Rx>(
             notification_consumer,
             sockets: initialize_sockets(),
         },
-        Ingress::new(rx,
-                     response_producer,
-                     notification_producer),
+        Ingress::new(rx, response_producer, notification_producer),
     )
 }
 
 fn initialize_sockets() -> [Socket; 5] {
     [
-        Socket { state: SocketState::Closed, available: 0 },
-        Socket { state: SocketState::Closed, available: 0 },
-        Socket { state: SocketState::Closed, available: 0 },
-        Socket { state: SocketState::Closed, available: 0 },
-        Socket { state: SocketState::Closed, available: 0 },
+        Socket {
+            state: SocketState::Closed,
+            available: 0,
+        },
+        Socket {
+            state: SocketState::Closed,
+            available: 0,
+        },
+        Socket {
+            state: SocketState::Closed,
+            available: 0,
+        },
+        Socket {
+            state: SocketState::Closed,
+            available: 0,
+        },
+        Socket {
+            state: SocketState::Closed,
+            available: 0,
+        },
     ]
 }
 
 fn write_command<Tx>(tx: &mut Tx, cmd: &[u8]) -> Result<(), Tx::Error>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     for b in cmd.iter() {
         nb::block!(tx.write(*b))?;
@@ -154,35 +172,35 @@ fn write_command<Tx>(tx: &mut Tx, cmd: &[u8]) -> Result<(), Tx::Error>
 }
 
 fn disable_echo<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-    where
-        Tx: Write<u8>,
-        Rx: Read<u8>,
+where
+    Tx: Write<u8>,
+    Rx: Read<u8>,
 {
     write_command(tx, b"ATE0\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn enable_mux<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-    where
-        Tx: Write<u8>,
-        Rx: Read<u8>,
+where
+    Tx: Write<u8>,
+    Rx: Read<u8>,
 {
     write_command(tx, b"AT+CIPMUX=1\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn set_recv_mode<Tx, Rx>(tx: &mut Tx, rx: &mut Rx) -> Result<(), AdapterError>
-    where
-        Tx: Write<u8>,
-        Rx: Read<u8>,
+where
+    Tx: Write<u8>,
+    Rx: Read<u8>,
 {
     write_command(tx, b"AT+CIPRECVMODE=1\r\n").map_err(|_| UnableToInitialize)?;
     Ok(wait_for_ok(rx).map_err(|_| UnableToInitialize)?)
 }
 
 fn wait_for_ok<Rx>(rx: &mut Rx) -> Result<(), Rx::Error>
-    where
-        Rx: Read<u8>,
+where
+    Rx: Read<u8>,
 {
     let mut buf: [u8; 64] = [0; 64];
     let mut pos = 0;
@@ -192,7 +210,7 @@ fn wait_for_ok<Rx>(rx: &mut Rx) -> Result<(), Rx::Error>
         buf[pos] = b;
         pos += 1;
         if buf[0..pos].ends_with(b"OK\r\n") {
-            log::info!( "matched OK");
+            log::info!("matched OK");
             return Ok(());
         }
     }
@@ -222,8 +240,8 @@ impl Socket {
 }
 
 pub struct Adapter<'a, Tx>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     tx: Tx,
     response_consumer: Consumer<'a, Response, U2>,
@@ -232,18 +250,21 @@ pub struct Adapter<'a, Tx>
 }
 
 impl<'a, Tx> Adapter<'a, Tx>
-    where
-        Tx: Write<u8>,
+where
+    Tx: Write<u8>,
 {
     fn send<'c>(&mut self, command: Command<'c>) -> Result<Response, AdapterError> {
         let bytes = command.as_bytes();
 
-        info!("writing command {}", core::str::from_utf8(bytes.as_bytes()).unwrap());
+        info!(
+            "writing command {}",
+            core::str::from_utf8(bytes.as_bytes()).unwrap()
+        );
         for b in bytes.as_bytes().iter() {
-            nb::block!( self.tx.write(*b ) ).map_err(|_| AdapterError::WriteError)?;
+            nb::block!(self.tx.write(*b)).map_err(|_| AdapterError::WriteError)?;
         }
-        nb::block!( self.tx.write( b'\r' )).map_err(|_| AdapterError::WriteError)?;
-        nb::block!( self.tx.write( b'\n' )).map_err(|_| AdapterError::WriteError)?;
+        nb::block!(self.tx.write(b'\r')).map_err(|_| AdapterError::WriteError)?;
+        nb::block!(self.tx.write(b'\n')).map_err(|_| AdapterError::WriteError)?;
         self.wait_for_response()
     }
 
@@ -290,11 +311,12 @@ impl<'a, Tx> Adapter<'a, Tx>
     ///
     /// * `ssid`: The access-point's SSID to join
     /// * `password`: The password for the access-point.
-    pub fn join<'c>(&mut self, ssid: &'c str, password: &'c str) -> Result<(), WifiConnectionFailure> {
-        let command = Command::JoinAp {
-            ssid,
-            password,
-        };
+    pub fn join<'c>(
+        &mut self,
+        ssid: &'c str,
+        password: &'c str,
+    ) -> Result<(), WifiConnectionFailure> {
+        let command = Command::JoinAp { ssid, password };
 
         if let Ok(response) = self.send(command) {
             if let Response::Ok = response {
@@ -310,8 +332,7 @@ impl<'a, Tx> Adapter<'a, Tx>
     }
 
     /// Consume the adapter and produce a `NetworkStack`.
-    pub fn into_network_stack(self) -> NetworkStack<'a, Tx>
-    {
+    pub fn into_network_stack(self) -> NetworkStack<'a, Tx> {
         NetworkStack::new(self)
     }
 
@@ -354,9 +375,8 @@ impl<'a, Tx> Adapter<'a, Tx>
             .sockets
             .iter_mut()
             .enumerate()
-            .find(|(_, e)| {
-                e.is_closed()
-            }) {
+            .find(|(_, e)| e.is_closed())
+        {
             socket.state = SocketState::Open;
             return Ok(index);
         }
@@ -369,10 +389,12 @@ impl<'a, Tx> Adapter<'a, Tx>
         Ok(())
     }
 
-    pub(crate) fn connect_tcp(&mut self, link_id: usize, remote: SocketAddr) -> Result<(), SocketError> {
-        let command = Command::StartConnection(link_id,
-                                               ConnectionType::TCP,
-                                               remote);
+    pub(crate) fn connect_tcp(
+        &mut self,
+        link_id: usize,
+        remote: SocketAddr,
+    ) -> Result<(), SocketError> {
+        let command = Command::StartConnection(link_id, ConnectionType::TCP, remote);
         if let Ok(response) = self.send(command) {
             if let Response::Connect(..) = response {
                 self.sockets[link_id].state = SocketState::Connected;
@@ -383,7 +405,11 @@ impl<'a, Tx> Adapter<'a, Tx>
         Err(SocketError::UnableToOpen)
     }
 
-    pub(crate) fn write(&mut self, link_id: usize, buffer: &[u8]) -> nb::Result<usize, SocketError> {
+    pub(crate) fn write(
+        &mut self,
+        link_id: usize,
+        buffer: &[u8],
+    ) -> nb::Result<usize, SocketError> {
         self.process_notifications();
 
         let command = Command::Send {
@@ -397,7 +423,8 @@ impl<'a, Tx> Adapter<'a, Tx>
                     if let Response::ReadyForData = response {
                         info!("sending data {}", buffer.len());
                         for b in buffer.iter() {
-                            nb::block!( self.tx.write( *b )).map_err(|_| nb::Error::from(WriteError))?;
+                            nb::block!(self.tx.write(*b))
+                                .map_err(|_| nb::Error::from(WriteError))?;
                         }
                         info!("sent data {}", buffer.len());
                         if let Ok(response) = self.wait_for_response() {
@@ -412,7 +439,11 @@ impl<'a, Tx> Adapter<'a, Tx>
         Err(nb::Error::from(SocketError::WriteError))
     }
 
-    pub(crate) fn read(&mut self, link_id: usize, buffer: &mut [u8]) -> nb::Result<usize, SocketError> {
+    pub(crate) fn read(
+        &mut self,
+        link_id: usize,
+        buffer: &mut [u8],
+    ) -> nb::Result<usize, SocketError> {
         self.process_notifications();
 
         if let SocketState::Closed = self.sockets[link_id].state {
@@ -437,26 +468,17 @@ impl<'a, Tx> Adapter<'a, Tx>
         };
 
         match self.send(command) {
-            Ok(response) => {
-                match response {
-                    Response::DataReceived(inbound, len) => {
-                        for (i, b) in inbound[0..len].iter().enumerate() {
-                            buffer[i] = *b;
-                        }
-                        self.sockets[link_id].available -= len;
-                        Ok(len)
+            Ok(response) => match response {
+                Response::DataReceived(inbound, len) => {
+                    for (i, b) in inbound[0..len].iter().enumerate() {
+                        buffer[i] = *b;
                     }
-                    _ => {
-                        Err(nb::Error::Other(ReadError))
-                    }
+                    self.sockets[link_id].available -= len;
+                    Ok(len)
                 }
-            }
-            Err(_) => {
-                Err(nb::Error::Other(ReadError))
-            }
+                _ => Err(nb::Error::Other(ReadError)),
+            },
+            Err(_) => Err(nb::Error::Other(ReadError)),
         }
     }
 }
-
-
-

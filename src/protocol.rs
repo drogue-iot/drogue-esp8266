@@ -1,9 +1,6 @@
-use heapless::{
-    String,
-    consts::U128,
-};
-use drogue_network::{Ipv4Addr, SocketAddr, IpAddr};
 use core::fmt::Write;
+use drogue_network::{IpAddr, Ipv4Addr, SocketAddr};
+use heapless::{consts::U128, String};
 
 /// Type of socket connection.
 #[derive(Debug)]
@@ -16,31 +13,18 @@ pub enum ConnectionType {
 #[derive(Debug)]
 pub enum Command<'a> {
     QueryFirmwareInfo,
-    JoinAp {
-        ssid: &'a str,
-        password: &'a str,
-    },
+    JoinAp { ssid: &'a str, password: &'a str },
     QueryIpAddress,
     StartConnection(usize, ConnectionType, SocketAddr),
-    Send {
-        link_id: usize,
-        len: usize,
-    },
-    Receive {
-        link_id: usize,
-        len: usize,
-    },
+    Send { link_id: usize, len: usize },
+    Receive { link_id: usize, len: usize },
 }
 
 impl<'a> Command<'a> {
     pub fn as_bytes(&self) -> String<U128> {
         match self {
-            Command::QueryFirmwareInfo => {
-                String::from("AT+GMR")
-            }
-            Command::QueryIpAddress => {
-                String::from("AT+CIPSTA_CUR?")
-            }
+            Command::QueryFirmwareInfo => String::from("AT+GMR"),
+            Command::QueryIpAddress => String::from("AT+CIPSTA_CUR?"),
             Command::JoinAp { ssid, password } => {
                 let mut s = String::from("AT+CWJAP_CUR=\"");
                 s.push_str(ssid).unwrap();
@@ -64,17 +48,18 @@ impl<'a> Command<'a> {
                 match socket_addr.ip() {
                     IpAddr::V4(ip) => {
                         let octets = ip.octets();
-                        write!(s, "\"{}.{}.{}.{}\",{}",
-                               octets[0],
-                               octets[1],
-                               octets[2],
-                               octets[3],
-                               socket_addr.port()
-                        ).unwrap();
+                        write!(
+                            s,
+                            "\"{}.{}.{}.{}\",{}",
+                            octets[0],
+                            octets[1],
+                            octets[2],
+                            octets[3],
+                            socket_addr.port()
+                        )
+                        .unwrap();
                     }
-                    IpAddr::V6(_) => {
-                        panic!("IPv6 not supported")
-                    }
+                    IpAddr::V6(_) => panic!("IPv6 not supported"),
                 }
                 s as String<U128>
             }
@@ -101,10 +86,7 @@ pub enum Response {
     FirmwareInfo(FirmwareInfo),
     ReadyForData,
     SendOk(usize),
-    DataAvailable {
-        link_id: usize,
-        len: usize,
-    },
+    DataAvailable { link_id: usize, len: usize },
     DataReceived([u8; 128], usize),
     WifiConnected,
     WifiConnectionFailure(WifiConnectionFailure),
@@ -132,7 +114,6 @@ pub struct FirmwareInfo {
     pub build: u8,
 }
 
-
 /// Reasons for Wifi access-point join failures.
 #[derive(Debug)]
 pub enum WifiConnectionFailure {
@@ -148,7 +129,7 @@ impl From<u8> for WifiConnectionFailure {
             1 => WifiConnectionFailure::Timeout,
             2 => WifiConnectionFailure::WrongPassword,
             3 => WifiConnectionFailure::CannotFindTargetAp,
-            _ => WifiConnectionFailure::ConnectionFailed
+            _ => WifiConnectionFailure::ConnectionFailed,
         }
     }
 }
