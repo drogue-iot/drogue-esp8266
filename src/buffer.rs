@@ -44,7 +44,7 @@ impl Buffer {
             let len = remainder.len();
             if len > 0 {
                 let start = self.pos - len;
-                self.buffer.moveslice(start..start + len, 0);
+                (&mut self.buffer[..]).moveslice(start..start + len, 0);
                 self.pos = len;
                 self.needs_parse = true;
             } else {
