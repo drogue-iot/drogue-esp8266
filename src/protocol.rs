@@ -79,6 +79,7 @@ impl<'a> Command<'a> {
 }
 
 /// Responses (including unsolicited) which may be parsed from the board.
+#[allow(clippy::large_enum_variant)]
 pub enum Response {
     None,
     Ok,

@@ -1,7 +1,7 @@
 use crate::parser;
 use crate::protocol::Response;
 use moveslice::Moveslice;
-use nom::lib::std::str::{from_utf8, Utf8Error};
+use core::str::from_utf8;
 
 pub(crate) struct Buffer {
     buffer: [u8; 4096],
@@ -41,11 +41,11 @@ impl Buffer {
         let str = from_utf8( &self.buffer[0..self.pos]);
         match str {
             Ok(s) => {
-                log::info!("parsing {} [{}]", self.pos, s)
+                log::debug!("parsing {} [{}]", self.pos, s)
             },
             Err(e) => {
                 let s = from_utf8(&self.buffer[0..e.valid_up_to()]).unwrap();
-                log::info!("parsing {} [{}<truncated>]", self.pos, s)
+                log::debug!("parsing {} [{}<truncated>]", self.pos, s)
             },
         }
 

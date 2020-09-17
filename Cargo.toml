@@ -1,6 +1,6 @@
 [package]
 name = "drogue-esp8266"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Bob McWhirter <bmcwhirt@redhat.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -23,8 +23,8 @@ drogue-network = "0.1.0"
 version= "5.1.2"
 default-features = false
 
-[dev-dependencies.arrayvec]
-version = "0.5"
-default-features = false
+#[dev-dependencies.arrayvec]
+#version = "0.5"
+#default-features = false
 
 

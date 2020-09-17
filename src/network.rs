@@ -1,7 +1,7 @@
 use crate::adapter::{Adapter, SocketError};
 use embedded_hal::serial::Write;
 
-use core::cell::{RefCell, BorrowMutError, RefMut};
+use core::cell::RefCell;
 use drogue_network::{Mode, SocketAddr, TcpStack};
 
 /// NetworkStack for and ESP8266
@@ -39,11 +39,10 @@ where
 
     fn open(&self, mode: Mode) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
-        let result = Ok(TcpSocket {
+        Ok(TcpSocket {
             link_id: adapter.open()?,
             mode,
-        });
-        result
+        })
     }
 
     fn connect(
@@ -54,8 +53,7 @@ where
         let mut adapter = self.adapter.borrow_mut();
 
         adapter.connect_tcp(socket.link_id, remote)?;
-        let result = Ok(socket);
-        result
+        Ok(socket)
     }
 
     fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
@@ -66,11 +64,9 @@ where
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        let result = Ok(adapter
+        Ok(adapter
             .write(socket.link_id, buffer)
-            .map_err(nb::Error::from)?);
-
-        result
+            .map_err(nb::Error::from)?)
     }
 
     fn read(
@@ -80,14 +76,13 @@ where
     ) -> nb::Result<usize, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
-        let result = match socket.mode {
+        match socket.mode {
             Mode::Blocking => {
                 nb::block!(adapter.read(socket.link_id, buffer)).map_err(nb::Error::from)
             }
             Mode::NonBlocking => adapter.read(socket.link_id, buffer),
             Mode::Timeout(_) => unimplemented!(),
-        };
-        result
+        }
     }
 
     fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {

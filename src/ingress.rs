@@ -6,7 +6,6 @@ use heapless::{
 
 use embedded_hal::serial::Read;
 use nb::Error;
-use core::fmt::Debug;
 
 pub struct Ingress<'a, Rx>
     where
@@ -37,17 +36,15 @@ impl<'a, Rx> Ingress<'a, Rx>
 
     /// Method to be called from USART or appropriate ISR.
     pub fn isr(&mut self) -> Result<(), u8> {
-        let mut count = 0;
         loop {
             let result = self.rx.read();
             match result {
                 Ok(d) => {
                     self.write(d)?;
-                    count +=1;
                 }
                 Err(e) => {
                     match e {
-                        Error::Other(o) => {
+                        Error::Other(_) => {
                         }
                         Error::WouldBlock => {
                             break;
