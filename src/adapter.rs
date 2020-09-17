@@ -16,6 +16,8 @@ use crate::adapter::SocketError::{NoAvailableSockets, ReadError, SocketNotOpen, 
 use crate::ingress::Ingress;
 use crate::network::NetworkStack;
 use drogue_network::SocketAddr;
+use core::fmt::Debug;
+use nom::lib::std::fmt::Formatter;
 
 #[derive(Debug)]
 pub enum AdapterError {
@@ -195,7 +197,6 @@ fn wait_for_ok<Rx>(rx: &mut Rx) -> Result<(), Rx::Error>
         buf[pos] = b;
         pos += 1;
         if buf[0..pos].ends_with(b"OK\r\n") {
-            log::info!("matched OK");
             return Ok(());
         }
     }
@@ -243,6 +244,16 @@ pub struct Adapter<'a, Tx>
     response_consumer: Consumer<'a, Response, U2>,
     notification_consumer: Consumer<'a, Response, U16>,
     sockets: [Socket; 5],
+}
+
+impl<'a, Tx> Debug for Adapter<'a, Tx>
+    where
+        Tx: Write<u8>,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct( "Adapter")
+            .finish()
+    }
 }
 
 impl<'a, Tx> Adapter<'a, Tx>
@@ -334,23 +345,18 @@ impl<'a, Tx> Adapter<'a, Tx>
         while let Some(response) = self.notification_consumer.dequeue() {
             match response {
                 Response::DataAvailable { link_id, len } => {
-                    info!("** data avail {} {}", link_id, len);
                     self.sockets[link_id].available += len;
                 }
                 Response::Connect(_) => {}
                 Response::Closed(link_id) => {
-                    info!("** close {}", link_id);
                     match self.sockets[link_id].state {
                         SocketState::HalfClosed => {
-                            info!("** fully closing");
                             self.sockets[link_id].state = SocketState::Closed;
                         }
                         SocketState::Open | SocketState::Connected => {
-                            info!("** half closing");
                             self.sockets[link_id].state = SocketState::HalfClosed;
                         }
                         SocketState::Closed => {
-                            info!("** really really closed");
                             // nothing
                         }
                     }
@@ -409,12 +415,10 @@ impl<'a, Tx> Adapter<'a, Tx>
             if let Response::Ok = response {
                 if let Ok(response) = self.wait_for_response() {
                     if let Response::ReadyForData = response {
-                        info!("sending data {}", buffer.len());
                         for b in buffer.iter() {
                             nb::block!(self.tx.write(*b))
                                 .map_err(|_| nb::Error::from(WriteError))?;
                         }
-                        info!("sent data {}", buffer.len());
                         if let Ok(response) = self.wait_for_response() {
                             if let Response::SendOk(len) = response {
                                 return Ok(len);
@@ -445,8 +449,6 @@ impl<'a, Tx> Adapter<'a, Tx>
                 return Err(nb::Error::WouldBlock);
             }
         }
-
-        info!("read {} with {}", link_id, self.sockets[link_id].available);
 
         let command = Command::Receive {
             link_id,

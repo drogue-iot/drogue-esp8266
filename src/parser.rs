@@ -26,7 +26,8 @@ fn parse_u8(input: &[u8]) -> IResult<&[u8], u8> {
 
 fn parse_usize(input: &[u8]) -> IResult<&[u8], usize> {
     let (input, digits) = digit1(input)?;
-    IResult::Ok((input, atoi_usize(digits).unwrap()))
+    let num = atoi_usize(digits).unwrap();
+    IResult::Ok((input, num))
 }
 
 #[rustfmt::skip]
@@ -259,7 +260,8 @@ named!(
 named!(
     pub data_received<Response>,
     do_parse!(
-        opt!(crlf) >>
+        opt!(tag!("\r")) >>
+        opt!(tag!("\n")) >>
         tag!("+CIPRECVDATA,") >>
         len: parse_usize >>
         char!(':') >>
@@ -267,7 +269,7 @@ named!(
         crlf >>
         ok >>
         ( {
-            let mut buf = [0; 128];
+            let mut buf = [0; 512];
             for (i, b) in data.iter().enumerate() {
                 //log::info!( "copy {} @ {}", *b as char, i);
                 buf[i] = *b;

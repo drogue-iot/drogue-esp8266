@@ -5,10 +5,12 @@ use heapless::{
 };
 
 use embedded_hal::serial::Read;
+use nb::Error;
+use core::fmt::Debug;
 
 pub struct Ingress<'a, Rx>
-where
-    Rx: Read<u8>,
+    where
+        Rx: Read<u8>,
 {
     rx: Rx,
     response_producer: Producer<'a, Response, U2>,
@@ -17,8 +19,8 @@ where
 }
 
 impl<'a, Rx> Ingress<'a, Rx>
-where
-    Rx: Read<u8>,
+    where
+        Rx: Read<u8>,
 {
     pub fn new(
         rx: Rx,
@@ -35,8 +37,24 @@ where
 
     /// Method to be called from USART or appropriate ISR.
     pub fn isr(&mut self) -> Result<(), u8> {
-        if let Ok(d) = self.rx.read() {
-            self.write(d)?;
+        let mut count = 0;
+        loop {
+            let result = self.rx.read();
+            match result {
+                Ok(d) => {
+                    self.write(d)?;
+                    count +=1;
+                }
+                Err(e) => {
+                    match e {
+                        Error::Other(o) => {
+                        }
+                        Error::WouldBlock => {
+                            break;
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }

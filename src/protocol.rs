@@ -87,7 +87,7 @@ pub enum Response {
     ReadyForData,
     SendOk(usize),
     DataAvailable { link_id: usize, len: usize },
-    DataReceived([u8; 128], usize),
+    DataReceived([u8; 512], usize),
     WifiConnected,
     WifiConnectionFailure(WifiConnectionFailure),
     WifiDisconnect,
