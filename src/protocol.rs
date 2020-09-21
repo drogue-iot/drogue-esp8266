@@ -31,6 +31,7 @@ pub enum Command<'a> {
     StartConnection(usize, ConnectionType, SocketAddr),
     Send { link_id: usize, len: usize },
     Receive { link_id: usize, len: usize },
+    GetHostByName{ hostname: &'a hostname},
 }
 
 impl<'a> Command<'a> {

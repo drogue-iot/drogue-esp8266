@@ -14,8 +14,8 @@ use log::info;
 use crate::adapter::AdapterError::UnableToInitialize;
 use crate::adapter::SocketError::{NoAvailableSockets, ReadError, SocketNotOpen, WriteError};
 use crate::ingress::Ingress;
-use crate::network::NetworkStack;
-use drogue_network::SocketAddr;
+use crate::network::{NetworkStack, DnsError};
+use drogue_network::{IpAddr, SocketAddr};
 use core::fmt::Debug;
 use nom::lib::std::fmt::Formatter;
 
@@ -493,5 +493,15 @@ impl<'a, Tx> Adapter<'a, Tx>
                 true
             },
         })
+    }
+    // ----------------------------------------
+    // DNS
+    // ----------------------------------------
+
+    pub(crate) fn get_host_by_name(&mut self, hostname: &str) -> Result<IpAddr,DnsError> {
+        let command = Command::GetHostByName {
+            hostname
+        };
+        Err(DnsError::NoSuchHost)
     }
 }
