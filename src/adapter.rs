@@ -1,7 +1,7 @@
 use embedded_hal::{digital::v2::OutputPin, serial::Read, serial::Write};
 
 use crate::protocol::{
-    Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure,
+    Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure, WiFiMode,
 };
 
 use heapless::{
@@ -304,6 +304,18 @@ impl<'a, Tx> Adapter<'a, Tx>
         }
 
         Err(())
+    }
+
+    /// Set the mode of the Wi-Fi stack
+    ///
+    /// Must be done before joining an access point.
+    pub fn set_mode(&mut self, mode:WiFiMode) -> Result<(), ()>{
+        let command = Command::SetMode(mode);
+
+        match self.send(command) {
+            Ok(Response::Ok) => Ok(()),
+            _ => Err(()),
+        }
     }
 
     /// Join a wifi access-point.

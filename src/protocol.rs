@@ -10,10 +10,22 @@ pub enum ConnectionType {
     UDP,
 }
 
+/// Mode of the Wi-Fi stack
+#[derive(Debug)]
+pub enum WiFiMode {
+    /// Station mode, aka client
+    Station,
+    /// Access point mode
+    SoftAccessPoint,
+    /// Access point + station mode
+    SoftAccessPointAndStation,
+}
+
 /// Commands to be sent to the ESP board.
 #[derive(Debug)]
 pub enum Command<'a> {
     QueryFirmwareInfo,
+    SetMode(WiFiMode),
     JoinAp { ssid: &'a str, password: &'a str },
     QueryIpAddress,
     StartConnection(usize, ConnectionType, SocketAddr),
@@ -26,6 +38,11 @@ impl<'a> Command<'a> {
         match self {
             Command::QueryFirmwareInfo => String::from("AT+GMR"),
             Command::QueryIpAddress => String::from("AT+CIPSTA_CUR?"),
+            Command::SetMode(mode)=> match mode {
+                WiFiMode::Station => String::from("AT+CWMODE_CUR=1"),
+                WiFiMode::SoftAccessPoint => String::from("AT+CWMODE_CUR=2"),
+                WiFiMode::SoftAccessPointAndStation => String::from("AT+CWMODE_CUR=3"),
+            }
             Command::JoinAp { ssid, password } => {
                 let mut s = String::from("AT+CWJAP_CUR=\"");
                 s.push_str(ssid).unwrap();
