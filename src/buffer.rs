@@ -63,8 +63,8 @@ impl Buffer {
             }
             ret = Ok(response);
         }
-
         /*
+
         let mut dump_len = self.pos;
         if dump_len > 10 {
             dump_len = 10;
@@ -98,7 +98,7 @@ impl Buffer {
             log::info!( "{}: {} {:#x?}", i + (self.pos - dump_len), *b as char, *b );
         }
         log::info!("<<--------");
-         */
+        */
 
         //Ok(Response::None)
         ret

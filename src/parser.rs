@@ -10,9 +10,12 @@ use nom::take_until;
 use nom::tuple;
 use nom::IResult;
 
-use drogue_network::Ipv4Addr;
+use drogue_network::{
+    IpAddr,
+    Ipv4Addr
+};
 
-use crate::protocol::FirmwareInfo;
+use crate::protocol::{FirmwareInfo, ResolverAddresses};
 use crate::protocol::IpAddresses;
 use crate::protocol::Response;
 use crate::protocol::WifiConnectionFailure;
@@ -281,6 +284,57 @@ named!(
 );
 
 named!(
+    pub dns_resolvers<Response>,
+    do_parse!(
+        tag!("+CIPDNS_CUR:") >>
+        ns1: ip_addr >> crlf >>
+        ns2: opt!(
+            do_parse!(
+                tag!("+CIPDNS_CUR:") >>
+                ns2: ip_addr >> crlf >>
+                (
+                    ns2
+                )
+            )
+        ) >>
+        ok >>
+        (
+            Response::Resolvers(
+                ResolverAddresses{
+                    resolver1: ns1,
+                    resolver2: ns2, /* ns2 is an Option */
+                }
+            )
+        )
+    )
+);
+
+named!(
+    pub dns_lookup<Response>,
+    do_parse!(
+        tag!("+CIPDOMAIN:") >>
+        ip_addr: ip_addr >>
+        crlf >>
+        ok >>
+        (
+            Response::IpAddress(IpAddr::V4(ip_addr))
+        )
+    )
+);
+
+named!(
+    pub dns_fail<Response>,
+    do_parse!(
+        tag!("DNS Fail") >>
+        crlf >>
+        error >>
+        (
+            Response::DnsFail
+        )
+    )
+);
+
+named!(
     pub parse<Response>,
     alt!(
           ok
@@ -297,5 +351,8 @@ named!(
         | send_ok
         | data_available
         | data_received
+        | dns_resolvers
+        | dns_lookup
+        | dns_fail
     )
 );

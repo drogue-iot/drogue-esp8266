@@ -2,11 +2,16 @@ use crate::adapter::{Adapter, SocketError};
 use embedded_hal::serial::Write;
 
 use core::cell::RefCell;
-use drogue_network::{Mode, SocketAddr, TcpStack, Dns, AddrType};
+use drogue_network::{Mode, SocketAddr, TcpStack, Dns, AddrType, IpAddr};
 use core::fmt::Debug;
 use nom::lib::std::fmt::Formatter;
-use no_std_net::IpAddr;
-use heapless::String;
+use heapless::{
+    String,
+    consts::{
+        U256,
+    }
+};
+use crate::network::DnsError::UnsupportedAddressType;
 
 /// NetworkStack for and ESP8266
 pub struct NetworkStack<'a, Tx>
@@ -115,7 +120,9 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
     }
 }
 
+#[derive(Debug)]
 pub enum DnsError {
+    UnsupportedAddressType,
     NoSuchHost,
 }
 
@@ -126,11 +133,18 @@ impl<'a, Tx> Dns for NetworkStack<'a, Tx>
     type Error = DnsError;
 
     fn gethostbyname(&self, hostname: &str, addr_type: AddrType) -> Result<IpAddr, Self::Error> {
-        let mut adapter = self.adapter.borrow_mut();
-        adapter.get_host_by_name(hostname)
+        match addr_type {
+            AddrType::IPv6 => {
+                Err(UnsupportedAddressType)
+            },
+            _ => {
+                let mut adapter = self.adapter.borrow_mut();
+                adapter.get_host_by_name(hostname)
+            }
+        }
     }
 
-    fn gethostbyaddr(&self, addr: IpAddr) -> Result<String<_>, Self::Error> {
+    fn gethostbyaddr(&self, addr: IpAddr) -> Result<String<U256>, Self::Error> {
         unimplemented!()
     }
 }

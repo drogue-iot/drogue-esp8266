@@ -1,7 +1,19 @@
 use core::fmt;
 use core::fmt::{Debug, Write};
 use drogue_network::{IpAddr, Ipv4Addr, SocketAddr};
-use heapless::{consts::U128, String};
+use heapless::{
+    String,
+    consts::{
+        U128,
+        U256,
+    }
+};
+
+#[derive(Debug)]
+pub struct ResolverAddresses {
+    pub resolver1: Ipv4Addr,
+    pub resolver2: Option<Ipv4Addr>,
+}
 
 /// Type of socket connection.
 #[derive(Debug)]
@@ -31,7 +43,9 @@ pub enum Command<'a> {
     StartConnection(usize, ConnectionType, SocketAddr),
     Send { link_id: usize, len: usize },
     Receive { link_id: usize, len: usize },
-    GetHostByName{ hostname: &'a hostname},
+    QueryDnsResolvers,
+    SetDnsResolvers(ResolverAddresses),
+    GetHostByName{ hostname: &'a str},
 }
 
 impl<'a> Command<'a> {
@@ -92,6 +106,22 @@ impl<'a> Command<'a> {
                 write!(s, "{},{}", link_id, len).unwrap();
                 s
             }
+            Command::QueryDnsResolvers => {
+                String::from("AT+CIPDNS_CUR?")
+            }
+            Command::SetDnsResolvers(addr) => {
+                let mut s = String::from("AT+CIPDNS_CUR=1,");
+                write!(s, "\"{}\"", addr.resolver1).unwrap();
+                if let Some(resolver2) = addr.resolver2 {
+                    write!(s, ",\"{}\"", resolver2 ).unwrap()
+                }
+                s
+            }
+            Command::GetHostByName { hostname } => {
+                let mut s = String::from("AT+CIPDOMAIN=");
+                write!(s, "\"{}\"", hostname).unwrap();
+                s
+            }
         }
     }
 }
@@ -114,6 +144,9 @@ pub enum Response {
     IpAddresses(IpAddresses),
     Connect(usize),
     Closed(usize),
+    Resolvers(ResolverAddresses),
+    IpAddress(IpAddr),
+    DnsFail,
 }
 
 impl Debug for Response {
@@ -140,6 +173,9 @@ impl Debug for Response {
             Response::IpAddresses(v) => f.debug_tuple("IpAddresses").field(v).finish(),
             Response::Connect(v) => f.debug_tuple("Connect").field(v).finish(),
             Response::Closed(v) => f.debug_tuple("Closed").field(v).finish(),
+            Response::IpAddress( v) => f.debug_tuple( "IpAddress").field(v).finish(),
+            Response::Resolvers(v) => f.debug_tuple( "Resolvers").field(v).finish(),
+            Response::DnsFail => f.write_str("DNS Fail"),
         }
     }
 }
@@ -169,6 +205,8 @@ pub enum WifiConnectionFailure {
     CannotFindTargetAp,
     ConnectionFailed,
 }
+
+
 
 impl From<u8> for WifiConnectionFailure {
     fn from(code: u8) -> Self {

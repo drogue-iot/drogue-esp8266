@@ -77,6 +77,9 @@ impl<'a, Rx> Ingress<'a, Rx>
                 | Response::DataReceived(..)
                 | Response::SendOk(..)
                 | Response::WifiConnectionFailure(..)
+                | Response::IpAddress(..)
+                | Response::Resolvers(..)
+                | Response::DnsFail
                 | Response::IpAddresses(..) => {
                     if let Err(response) = self.response_producer.enqueue(response) {
                         log::error!("failed to enqueue response {:?}", response);

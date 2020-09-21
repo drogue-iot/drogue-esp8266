@@ -1,8 +1,6 @@
 use embedded_hal::{digital::v2::OutputPin, serial::Read, serial::Write};
 
-use crate::protocol::{
-    Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure, WiFiMode,
-};
+use crate::protocol::{Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure, WiFiMode, ResolverAddresses};
 
 use heapless::{
     consts::{U16, U2},
@@ -15,9 +13,10 @@ use crate::adapter::AdapterError::UnableToInitialize;
 use crate::adapter::SocketError::{NoAvailableSockets, ReadError, SocketNotOpen, WriteError};
 use crate::ingress::Ingress;
 use crate::network::{NetworkStack, DnsError};
-use drogue_network::{IpAddr, SocketAddr};
+use drogue_network::{IpAddr, SocketAddr, Ipv4Addr};
 use core::fmt::Debug;
 use nom::lib::std::fmt::Formatter;
+use crate::protocol::Response::IpAddress;
 
 #[derive(Debug)]
 pub enum AdapterError {
@@ -251,7 +250,7 @@ impl<'a, Tx> Debug for Adapter<'a, Tx>
         Tx: Write<u8>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct( "Adapter")
+        f.debug_struct("Adapter")
             .finish()
     }
 }
@@ -309,7 +308,7 @@ impl<'a, Tx> Adapter<'a, Tx>
     /// Set the mode of the Wi-Fi stack
     ///
     /// Must be done before joining an access point.
-    pub fn set_mode(&mut self, mode:WiFiMode) -> Result<(), ()>{
+    pub fn set_mode(&mut self, mode: WiFiMode) -> Result<(), ()> {
         let command = Command::SetMode(mode);
 
         match self.send(command) {
@@ -341,6 +340,30 @@ impl<'a, Tx> Adapter<'a, Tx>
             _ => {
                 Err(WifiConnectionFailure::ConnectionFailed)
             }
+        }
+    }
+
+    pub fn query_dns_resolvers(&mut self) -> Result<ResolverAddresses, ()> {
+        let command = Command::QueryDnsResolvers;
+        if let Ok(Response::Resolvers(resolvers)) = self.send(command) {
+            Ok(resolvers)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn set_dns_resolvers(&mut self, resolver1: Ipv4Addr, resolver2: Option<Ipv4Addr>) -> Result<(), ()> {
+        let command = Command::SetDnsResolvers(
+            ResolverAddresses {
+                resolver1,
+                resolver2
+            }
+        );
+
+        if let Ok(Response::Ok) = self.send(command) {
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
@@ -478,30 +501,36 @@ impl<'a, Tx> Adapter<'a, Tx>
         }
     }
 
-    pub(crate) fn is_connected(&self, link_id: usize) -> Result<bool,SocketError> {
-        Ok( match self.sockets[link_id].state {
+    pub(crate) fn is_connected(&self, link_id: usize) -> Result<bool, SocketError> {
+        Ok(match self.sockets[link_id].state {
             SocketState::HalfClosed => {
                 self.sockets[link_id].available > 0
-            },
+            }
             SocketState::Closed => {
                 false
-            },
+            }
             SocketState::Open => {
                 false
-            },
+            }
             SocketState::Connected => {
                 true
-            },
+            }
         })
     }
-    // ----------------------------------------
-    // DNS
-    // ----------------------------------------
 
-    pub(crate) fn get_host_by_name(&mut self, hostname: &str) -> Result<IpAddr,DnsError> {
+    // ----------------------------------------------------------------------
+    // DNS
+    // ----------------------------------------------------------------------
+
+    pub(crate) fn get_host_by_name(&mut self, hostname: &str) -> Result<IpAddr, DnsError> {
         let command = Command::GetHostByName {
             hostname
         };
-        Err(DnsError::NoSuchHost)
+
+        if let Ok(IpAddress(ip_addr)) = self.send(command) {
+            Ok(ip_addr)
+        } else {
+            Err(DnsError::NoSuchHost)
+        }
     }
 }
