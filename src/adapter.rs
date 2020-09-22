@@ -2,36 +2,28 @@ use embedded_hal::{digital::v2::OutputPin, serial::Read, serial::Write};
 
 use crate::protocol::{Command, ConnectionType, FirmwareInfo, IpAddresses, Response, WifiConnectionFailure, WiFiMode, ResolverAddresses};
 
-use heapless::{
-    consts::{U16, U2},
-    spsc::{Consumer, Queue},
-};
+use heapless::{consts::{U16, U2}, spsc::{Consumer, Queue}, String};
 
 use log::info;
 
 use crate::adapter::AdapterError::UnableToInitialize;
-use crate::adapter::SocketError::{NoAvailableSockets, ReadError, SocketNotOpen, WriteError};
 use crate::ingress::Ingress;
-use crate::network::{NetworkStack, DnsError};
-use drogue_network::{IpAddr, SocketAddr, Ipv4Addr};
+use crate::network::Esp8266IpNetworkDriver;
 use core::fmt::Debug;
 use nom::lib::std::fmt::Formatter;
 use crate::protocol::Response::IpAddress;
+use drogue_network::dns::DnsError;
+use drogue_network::addr::{Ipv4Addr, HostAddr, HostSocketAddr};
 
 #[derive(Debug)]
 pub enum AdapterError {
-    Timeout,
     UnableToInitialize,
-    WriteError,
-}
-
-#[derive(Debug)]
-pub enum SocketError {
     NoAvailableSockets,
-    SocketNotOpen,
+    Timeout,
     UnableToOpen,
     WriteError,
     ReadError,
+    InvalidSocket,
 }
 
 #[derive(Debug)]
@@ -368,8 +360,8 @@ impl<'a, Tx> Adapter<'a, Tx>
     }
 
     /// Consume the adapter and produce a `NetworkStack`.
-    pub fn into_network_stack(self) -> NetworkStack<'a, Tx> {
-        NetworkStack::new(self)
+    pub fn into_network_stack(self) -> Esp8266IpNetworkDriver<'a, Tx> {
+        Esp8266IpNetworkDriver::new(self)
     }
 
     // ----------------------------------------------------------------------
@@ -401,7 +393,7 @@ impl<'a, Tx> Adapter<'a, Tx>
         }
     }
 
-    pub(crate) fn open(&mut self) -> Result<usize, SocketError> {
+    pub(crate) fn open(&mut self) -> Result<usize, AdapterError> {
         if let Some((index, socket)) = self
             .sockets
             .iter_mut()
@@ -412,10 +404,10 @@ impl<'a, Tx> Adapter<'a, Tx>
             return Ok(index);
         }
 
-        Err(NoAvailableSockets)
+        Err(AdapterError::NoAvailableSockets)
     }
 
-    pub(crate) fn close(&mut self, link_id: usize) -> Result<(), SocketError> {
+    pub(crate) fn close(&mut self, link_id: usize) -> Result<(), AdapterError> {
         self.sockets[link_id].state = SocketState::Closed;
         Ok(())
     }
@@ -423,22 +415,22 @@ impl<'a, Tx> Adapter<'a, Tx>
     pub(crate) fn connect_tcp(
         &mut self,
         link_id: usize,
-        remote: SocketAddr,
-    ) -> Result<(), SocketError> {
-        let command = Command::StartConnection(link_id, ConnectionType::TCP, remote);
+        remote: HostSocketAddr,
+    ) -> Result<(), AdapterError> {
+        let command = Command::StartConnection(link_id, ConnectionType::TCP, remote.as_socket_addr());
         if let Ok(Response::Connect(..)) = self.send(command) {
             self.sockets[link_id].state = SocketState::Connected;
             return Ok(());
         }
 
-        Err(SocketError::UnableToOpen)
+        Err(AdapterError::UnableToOpen)
     }
 
     pub(crate) fn write(
         &mut self,
         link_id: usize,
         buffer: &[u8],
-    ) -> nb::Result<usize, SocketError> {
+    ) -> nb::Result<usize, AdapterError> {
         self.process_notifications();
 
         let command = Command::Send {
@@ -452,7 +444,7 @@ impl<'a, Tx> Adapter<'a, Tx>
                     if let Response::ReadyForData = response {
                         for b in buffer.iter() {
                             nb::block!(self.tx.write(*b))
-                                .map_err(|_| nb::Error::from(WriteError))?;
+                                .map_err(|_| nb::Error::from(AdapterError::WriteError))?;
                         }
                         if let Ok(response) = self.wait_for_response() {
                             if let Response::SendOk(len) = response {
@@ -463,31 +455,36 @@ impl<'a, Tx> Adapter<'a, Tx>
                 }
             }
         }
-        Err(nb::Error::from(SocketError::WriteError))
+        Err(nb::Error::from(AdapterError::WriteError))
     }
 
     pub(crate) fn read(
         &mut self,
         link_id: usize,
         buffer: &mut [u8],
-    ) -> nb::Result<usize, SocketError> {
+    ) -> nb::Result<usize, AdapterError> {
         self.process_notifications();
 
         if matches!( self.sockets[link_id].state, SocketState::Closed ) {
-            return Err(nb::Error::Other(SocketNotOpen));
+            return Err(nb::Error::Other(AdapterError::InvalidSocket));
         }
 
         if self.sockets[link_id].available == 0 {
             if matches!( self.sockets[link_id].state, SocketState::HalfClosed ) {
-                return Err(nb::Error::Other(SocketNotOpen));
+                return Err(nb::Error::Other(AdapterError::InvalidSocket));
             } else {
                 return Err(nb::Error::WouldBlock);
             }
         }
 
+        let mut actual_len = buffer.len();
+        if actual_len > 512 {
+            actual_len = 512;
+        }
+
         let command = Command::Receive {
             link_id,
-            len: buffer.len(),
+            len: actual_len,
         };
 
         match self.send(command) {
@@ -499,11 +496,11 @@ impl<'a, Tx> Adapter<'a, Tx>
                 Ok(len)
             }
             Ok(Response::Ok) => Err(nb::Error::WouldBlock),
-            _=> Err(nb::Error::Other(ReadError)),
+            _=> Err(nb::Error::Other(AdapterError::ReadError)),
         }
     }
 
-    pub(crate) fn is_connected(&self, link_id: usize) -> Result<bool, SocketError> {
+    pub(crate) fn is_connected(&self, link_id: usize) -> Result<bool, AdapterError> {
         Ok(match self.sockets[link_id].state {
             SocketState::HalfClosed => {
                 self.sockets[link_id].available > 0
@@ -524,13 +521,15 @@ impl<'a, Tx> Adapter<'a, Tx>
     // DNS
     // ----------------------------------------------------------------------
 
-    pub(crate) fn get_host_by_name(&mut self, hostname: &str) -> Result<IpAddr, DnsError> {
+    pub(crate) fn get_host_by_name(&mut self, hostname: &str) -> Result<HostAddr, DnsError> {
         let command = Command::GetHostByName {
             hostname
         };
 
         if let Ok(IpAddress(ip_addr)) = self.send(command) {
-            Ok(ip_addr)
+            Ok(
+                HostAddr::new(ip_addr, Some(String::from(hostname)))
+            )
         } else {
             Err(DnsError::NoSuchHost)
         }

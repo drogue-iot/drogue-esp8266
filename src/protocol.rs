@@ -1,11 +1,10 @@
 use core::fmt;
 use core::fmt::{Debug, Write};
-use drogue_network::{IpAddr, Ipv4Addr, SocketAddr};
+use drogue_network::addr::{IpAddr, Ipv4Addr, SocketAddr};
 use heapless::{
     String,
     consts::{
         U128,
-        U256,
     }
 };
 

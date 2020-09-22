@@ -1,27 +1,37 @@
-use crate::adapter::{Adapter, SocketError};
+use crate::adapter::{Adapter, AdapterError};
 use embedded_hal::serial::Write;
 
 use core::cell::RefCell;
-use drogue_network::{Mode, SocketAddr, TcpStack, Dns, AddrType, IpAddr};
+use drogue_network::addr::{
+    HostAddr,
+    HostSocketAddr,
+    IpAddr
+};
+use drogue_network::tcp::{
+    Mode,
+    TcpStack,
+    TcpError,
+    TcpImplError,
+};
 use core::fmt::Debug;
 use nom::lib::std::fmt::Formatter;
 use heapless::{
     String,
     consts::{
         U256,
-    }
+    },
 };
-use crate::network::DnsError::UnsupportedAddressType;
-
-/// NetworkStack for and ESP8266
-pub struct NetworkStack<'a, Tx>
+use drogue_network::IpNetworkDriver;
+use drogue_network::dns::{Dns, DnsError, AddrType};
+/// Network driver based on the ESP8266 board
+pub struct Esp8266IpNetworkDriver<'a, Tx>
     where
         Tx: Write<u8>,
 {
     adapter: RefCell<Adapter<'a, Tx>>,
 }
 
-impl<'a, Tx> NetworkStack<'a, Tx>
+impl<'a, Tx> Esp8266IpNetworkDriver<'a, Tx>
     where
         Tx: Write<u8>,
 {
@@ -29,6 +39,23 @@ impl<'a, Tx> NetworkStack<'a, Tx>
         Self {
             adapter: RefCell::new(adapter),
         }
+    }
+}
+
+impl<'a, Tx> IpNetworkDriver for Esp8266IpNetworkDriver<'a, Tx>
+    where
+        Tx: Write<u8>,
+{
+    type TcpSocket = TcpSocket;
+    type TcpError = TcpError;
+    type DnsError = DnsError;
+
+    fn tcp(&self) -> &dyn TcpStack<TcpSocket=Self::TcpSocket, Error=Self::TcpError> {
+        self as &dyn TcpStack<TcpSocket = Self::TcpSocket, Error = Self::TcpError>
+    }
+
+    fn dns(&self) -> &dyn Dns<Error=Self::DnsError> {
+        self as &dyn Dns<Error = Self::DnsError>
     }
 }
 
@@ -43,14 +70,14 @@ impl Debug for TcpSocket {
         f.debug_struct("TcpSocket")
             .field("link_id", &self.link_id)
             .field("mode",
-                   & match self.mode {
+                   &match self.mode {
                        Mode::Blocking => {
                            "blocking"
                        }
                        Mode::NonBlocking => {
                            "non-blocking"
                        }
-                       Mode::Timeout(t) => {
+                       Mode::Timeout(_t) => {
                            "timeout"
                        }
                    },
@@ -59,12 +86,55 @@ impl Debug for TcpSocket {
     }
 }
 
-impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
+/*
+impl Into<TcpError> for AdapterError {
+    fn into(self) -> TcpError {
+        match self {
+            AdapterError::Timeout => {
+                TcpError::Timeout
+            },
+            AdapterError::WriteError => {
+                TcpError::WriteError
+            },
+            AdapterError::InvalidSocket => {
+                TcpError::SocketNotOpen
+            },
+            _ => {
+                TcpError::Impl(TcpImplError::Unknown)
+            },
+        }
+    }
+}
+ */
+
+impl From<AdapterError> for TcpError {
+    fn from(error: AdapterError) -> Self {
+        match error {
+            AdapterError::Timeout => {
+                TcpError::Timeout
+            }
+            AdapterError::WriteError => {
+                TcpError::WriteError
+            }
+            AdapterError::ReadError => {
+                TcpError::ReadError
+            }
+            AdapterError::InvalidSocket => {
+                TcpError::SocketNotOpen
+            }
+            _ => {
+                TcpError::Impl(TcpImplError::Unknown)
+            }
+        }
+    }
+}
+
+impl<'a, Tx> TcpStack for Esp8266IpNetworkDriver<'a, Tx>
     where
         Tx: Write<u8>,
 {
     type TcpSocket = TcpSocket;
-    type Error = SocketError;
+    type Error = TcpError;
 
     fn open(&self, mode: Mode) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
@@ -77,7 +147,7 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
     fn connect(
         &self,
         socket: Self::TcpSocket,
-        remote: SocketAddr,
+        remote: HostSocketAddr,
     ) -> Result<Self::TcpSocket, Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
 
@@ -87,7 +157,7 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
 
     fn is_connected(&self, socket: &Self::TcpSocket) -> Result<bool, Self::Error> {
         let adapter = self.adapter.borrow();
-        adapter.is_connected(socket.link_id)
+        adapter.is_connected(socket.link_id).map_err(TcpError::from)
     }
 
     fn write(&self, socket: &mut Self::TcpSocket, buffer: &[u8]) -> nb::Result<usize, Self::Error> {
@@ -95,7 +165,7 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
 
         Ok(adapter
             .write(socket.link_id, buffer)
-            .map_err(nb::Error::from)?)
+            .map_err(|e| { e.map(TcpError::from) })?)
     }
 
     fn read(
@@ -107,35 +177,38 @@ impl<'a, Tx> TcpStack for NetworkStack<'a, Tx>
 
         match socket.mode {
             Mode::Blocking => {
-                nb::block!(adapter.read(socket.link_id, buffer)).map_err(nb::Error::from)
+                nb::block!(
+                adapter.read(socket.link_id, buffer))
+                    .map_err(|e|
+                        nb::Error::from(TcpError::from(e))
+                    )
             }
-            Mode::NonBlocking => adapter.read(socket.link_id, buffer),
+            Mode::NonBlocking => {
+                adapter.read(socket.link_id, buffer)
+                    .map_err(|e|
+                        e.map(TcpError::from)
+                    )
+            }
             Mode::Timeout(_) => unimplemented!(),
         }
     }
 
     fn close(&self, socket: Self::TcpSocket) -> Result<(), Self::Error> {
         let mut adapter = self.adapter.borrow_mut();
-        adapter.close(socket.link_id)
+        adapter.close(socket.link_id).map_err(|e| e.into())
     }
 }
 
-#[derive(Debug)]
-pub enum DnsError {
-    UnsupportedAddressType,
-    NoSuchHost,
-}
-
-impl<'a, Tx> Dns for NetworkStack<'a, Tx>
+impl<'a, Tx> Dns for Esp8266IpNetworkDriver<'a, Tx>
     where
         Tx: Write<u8>,
 {
     type Error = DnsError;
 
-    fn gethostbyname(&self, hostname: &str, addr_type: AddrType) -> Result<IpAddr, Self::Error> {
+    fn gethostbyname(&self, hostname: &str, addr_type: AddrType) -> Result<HostAddr, Self::Error> {
         match addr_type {
             AddrType::IPv6 => {
-                Err(UnsupportedAddressType)
+                Err(DnsError::UnsupportedAddressType)
             },
             _ => {
                 let mut adapter = self.adapter.borrow_mut();
@@ -144,7 +217,8 @@ impl<'a, Tx> Dns for NetworkStack<'a, Tx>
         }
     }
 
-    fn gethostbyaddr(&self, addr: IpAddr) -> Result<String<U256>, Self::Error> {
+    fn gethostbyaddr(&self, _addr: IpAddr) -> Result<String<U256>, Self::Error> {
         unimplemented!()
     }
 }
+

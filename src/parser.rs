@@ -10,9 +10,9 @@ use nom::take_until;
 use nom::tuple;
 use nom::IResult;
 
-use drogue_network::{
+use drogue_network::addr::{
     IpAddr,
-    Ipv4Addr
+    Ipv4Addr,
 };
 
 use crate::protocol::{FirmwareInfo, ResolverAddresses};
