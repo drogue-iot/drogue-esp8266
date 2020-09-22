@@ -135,6 +135,7 @@ pub enum Response {
     FirmwareInfo(FirmwareInfo),
     ReadyForData,
     SendOk(usize),
+    SendFail,
     DataAvailable { link_id: usize, len: usize },
     DataReceived([u8; 512], usize),
     WifiConnected,
@@ -158,6 +159,7 @@ impl Debug for Response {
             Response::FirmwareInfo(v) => f.debug_tuple("FirmwareInfo").field(v).finish(),
             Response::ReadyForData => f.write_str("ReadyForData"),
             Response::SendOk(v) => f.debug_tuple("SendOk").field(v).finish(),
+            Response::SendFail => f.write_str("SendFail"),
             Response::DataAvailable { link_id, len } => f
                 .debug_struct("DataAvailable")
                 .field("link_id", link_id)

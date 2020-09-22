@@ -76,6 +76,7 @@ impl<'a, Rx> Ingress<'a, Rx>
                 | Response::ReadyForData
                 | Response::DataReceived(..)
                 | Response::SendOk(..)
+                | Response::SendFail
                 | Response::WifiConnectionFailure(..)
                 | Response::IpAddress(..)
                 | Response::Resolvers(..)

@@ -233,6 +233,23 @@ named!(
 );
 
 named!(
+    pub send_fail<Response>,
+    do_parse!(
+        crlf >>
+        tag!("Recv ") >>
+        len: parse_usize >>
+        tag!(" bytes") >>
+        opt!(closed) >>
+        opt!(crlf) >>
+        tag!("SEND FAIL") >>
+        crlf >>
+        (
+            Response::SendFail
+        )
+    )
+);
+
+named!(
     pub data_available<Response>,
     do_parse!(
         opt!( crlf ) >>
@@ -349,6 +366,7 @@ named!(
         | closed
         | ready_for_data
         | send_ok
+        | send_fail
         | data_available
         | data_received
         | dns_resolvers
