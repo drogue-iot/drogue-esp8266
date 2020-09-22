@@ -490,14 +490,16 @@ impl<'a, Tx> Adapter<'a, Tx>
             len: buffer.len(),
         };
 
-        if let Ok(Response::DataReceived(inbound, len)) = self.send(command) {
-            for (i, b) in inbound[0..len].iter().enumerate() {
-                buffer[i] = *b;
+        match self.send(command) {
+            Ok(Response::DataReceived(inbound, len)) => {
+                for (i, b) in inbound[0..len].iter().enumerate() {
+                    buffer[i] = *b;
+                }
+                self.sockets[link_id].available -= len;
+                Ok(len)
             }
-            self.sockets[link_id].available -= len;
-            Ok(len)
-        } else {
-            Err(nb::Error::Other(ReadError))
+            Ok(Response::Ok) => Err(nb::Error::WouldBlock),
+            _=> Err(nb::Error::Other(ReadError)),
         }
     }
 
