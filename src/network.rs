@@ -31,6 +31,16 @@ pub struct Esp8266IpNetworkDriver<'a, Tx>
     adapter: RefCell<Adapter<'a, Tx>>,
 }
 
+
+impl<'a, Tx> Debug for Esp8266IpNetworkDriver<'a, Tx>
+    where
+        Tx: Write<u8>,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple( "Esp8266IpNetworkDriver").finish()
+    }
+}
+
 impl<'a, Tx> Esp8266IpNetworkDriver<'a, Tx>
     where
         Tx: Write<u8>,

@@ -239,8 +239,9 @@ named!(
         tag!("Recv ") >>
         len: parse_usize >>
         tag!(" bytes") >>
-        opt!(closed) >>
-        opt!(crlf) >>
+        crlf >>
+        //opt!(closed) >>
+        //opt!(crlf) >>
         tag!("SEND FAIL") >>
         crlf >>
         (

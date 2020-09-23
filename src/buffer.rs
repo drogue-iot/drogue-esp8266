@@ -41,11 +41,11 @@ impl Buffer {
         let str = from_utf8( &self.buffer[0..self.pos]);
         match str {
             Ok(s) => {
-                log::debug!("parsing {} [{}]", self.pos, s)
+                log::info!("parsing {} [{}]", self.pos, s)
             },
             Err(e) => {
                 let s = from_utf8(&self.buffer[0..e.valid_up_to()]).unwrap();
-                log::debug!("parsing {} [{}<truncated>]", self.pos, s)
+                log::info!("parsing {} [{}<truncated>]", self.pos, s)
             },
         }
 
@@ -63,8 +63,8 @@ impl Buffer {
             }
             ret = Ok(response);
         }
-        /*
 
+        /*
         let mut dump_len = self.pos;
         if dump_len > 10 {
             dump_len = 10;
@@ -98,8 +98,9 @@ impl Buffer {
             log::info!( "{}: {} {:#x?}", i + (self.pos - dump_len), *b as char, *b );
         }
         log::info!("<<--------");
-        */
 
+
+         */
         //Ok(Response::None)
         ret
     }

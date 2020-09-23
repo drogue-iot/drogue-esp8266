@@ -66,7 +66,11 @@ impl<'a, Rx> Ingress<'a, Rx>
     pub fn digest(&mut self) {
         let result = self.buffer.parse();
 
+
         if let Ok(response) = result {
+            if ! matches!(response, Response::None ) {
+                log::info!("--> {:?}", response);
+            }
             match response {
                 Response::None => {}
                 Response::Ok

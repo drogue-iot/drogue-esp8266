@@ -164,7 +164,8 @@ impl Debug for Response {
                 .field("link_id", link_id)
                 .field("len", len)
                 .finish(),
-            Response::DataReceived(d, l) => dump_data("DataReceived", d, *l, f),
+            //Response::DataReceived(d, l) => dump_data("DataReceived", d, *l, f),
+            Response::DataReceived(d, l) => f.write_str("DataReceived"),
             Response::WifiConnected => f.write_str("WifiConnected"),
             Response::WifiConnectionFailure(v) => {
                 f.debug_tuple("WifiConnectionFailure").field(v).finish()
