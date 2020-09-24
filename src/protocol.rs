@@ -133,7 +133,8 @@ pub enum Response {
     Error,
     FirmwareInfo(FirmwareInfo),
     ReadyForData,
-    SendOk(usize),
+    ReceivedDataToSend(usize),
+    SendOk,
     SendFail,
     DataAvailable { link_id: usize, len: usize },
     DataReceived([u8; 512], usize),
@@ -157,7 +158,8 @@ impl Debug for Response {
             Response::Error => f.write_str("Error"),
             Response::FirmwareInfo(v) => f.debug_tuple("FirmwareInfo").field(v).finish(),
             Response::ReadyForData => f.write_str("ReadyForData"),
-            Response::SendOk(v) => f.debug_tuple("SendOk").field(v).finish(),
+            Response::ReceivedDataToSend(len) => f.debug_tuple("ReceivedDataToSend").field(len).finish(),
+            Response::SendOk =>f.write_str("SendOk"),
             Response::SendFail => f.write_str("SendFail"),
             Response::DataAvailable { link_id, len } => f
                 .debug_struct("DataAvailable")

@@ -217,17 +217,27 @@ named!(
 );
 
 named!(
-    pub send_ok<Response>,
+    pub received_data_to_send<Response>,
     do_parse!(
-        crlf >>
+        opt!( crlf ) >>
         tag!("Recv ") >>
         len: parse_usize >>
         tag!(" bytes") >>
-        crlf >> crlf >>
+        crlf >>
+        (
+            Response::ReceivedDataToSend(len)
+        )
+    )
+);
+
+named!(
+    pub send_ok<Response>,
+    do_parse!(
+        opt!( crlf ) >>
         tag!("SEND OK") >>
         crlf >>
         (
-            Response::SendOk(len)
+            Response::SendOk
         )
     )
 );
@@ -235,13 +245,7 @@ named!(
 named!(
     pub send_fail<Response>,
     do_parse!(
-        crlf >>
-        tag!("Recv ") >>
-        len: parse_usize >>
-        tag!(" bytes") >>
-        crlf >>
-        //opt!(closed) >>
-        //opt!(crlf) >>
+        opt!( crlf ) >>
         tag!("SEND FAIL") >>
         crlf >>
         (
@@ -366,6 +370,7 @@ named!(
         | connect
         | closed
         | ready_for_data
+        | received_data_to_send
         | send_ok
         | send_fail
         | data_available

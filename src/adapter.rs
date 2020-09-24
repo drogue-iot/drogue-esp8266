@@ -446,9 +446,18 @@ impl<'a, Tx> Adapter<'a, Tx>
                             nb::block!(self.tx.write(*b))
                                 .map_err(|_| nb::Error::from(AdapterError::WriteError))?;
                         }
-                        if let Ok(response) = self.wait_for_response() {
-                            if let Response::SendOk(len) = response {
-                                return Ok(len);
+                        let mut data_sent: Option<usize> = None;
+                        loop {
+                            match self.wait_for_response() {
+                                Ok(Response::ReceivedDataToSend(len)) => {
+                                    data_sent.replace(len);
+                                }
+                                Ok(Response::SendOk) => {
+                                    return Ok(data_sent.unwrap_or_default());
+                                }
+                                _ => {
+                                    break; // unknown response
+                                }
                             }
                         }
                     }
