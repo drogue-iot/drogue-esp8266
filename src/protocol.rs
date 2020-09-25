@@ -40,6 +40,7 @@ pub enum Command<'a> {
     JoinAp { ssid: &'a str, password: &'a str },
     QueryIpAddress,
     StartConnection(usize, ConnectionType, SocketAddr),
+    CloseConnection(usize),
     Send { link_id: usize, len: usize },
     Receive { link_id: usize, len: usize },
     QueryDnsResolvers,
@@ -95,6 +96,11 @@ impl<'a> Command<'a> {
                 }
                 s as String<U128>
             }
+            Command::CloseConnection(link_id) => {
+                let mut s = String::from("AT+CIPCLOSE=");
+                write!(s, "{}", link_id).unwrap();
+                s
+            }
             Command::Send { link_id, len } => {
                 let mut s = String::from("AT+CIPSEND=");
                 write!(s, "{},{}", link_id, len).unwrap();
@@ -148,6 +154,7 @@ pub enum Response {
     Resolvers(ResolverAddresses),
     IpAddress(IpAddr),
     DnsFail,
+    UnlinkFail,
 }
 
 impl Debug for Response {
@@ -180,6 +187,7 @@ impl Debug for Response {
             Response::IpAddress( v) => f.debug_tuple( "IpAddress").field(v).finish(),
             Response::Resolvers(v) => f.debug_tuple( "Resolvers").field(v).finish(),
             Response::DnsFail => f.write_str("DNS Fail"),
+            Response::UnlinkFail => f.write_str("UnlinkFail"),
         }
     }
 }

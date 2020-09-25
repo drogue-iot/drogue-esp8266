@@ -21,6 +21,7 @@ pub enum AdapterError {
     NoAvailableSockets,
     Timeout,
     UnableToOpen,
+    UnableToClose,
     WriteError,
     ReadError,
     InvalidSocket,
@@ -408,8 +409,14 @@ impl<'a, Tx> Adapter<'a, Tx>
     }
 
     pub(crate) fn close(&mut self, link_id: usize) -> Result<(), AdapterError> {
-        self.sockets[link_id].state = SocketState::Closed;
-        Ok(())
+        let command = Command::CloseConnection(link_id);
+        match self.send(command) {
+            Ok(Response::Ok) | Ok(Response::UnlinkFail) => {
+                self.sockets[link_id].state = SocketState::Closed;
+                Ok(())
+            },
+            _=> Err(AdapterError::UnableToClose),
+        }
     }
 
     pub(crate) fn connect_tcp(

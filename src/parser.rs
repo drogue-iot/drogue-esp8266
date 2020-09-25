@@ -357,6 +357,19 @@ named!(
 );
 
 named!(
+    pub unlink_fail<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        tag!("UNLINK") >>
+        crlf >>
+        error >>
+        (
+            Response::UnlinkFail
+        )
+    )
+);
+
+named!(
     pub parse<Response>,
     alt!(
           ok
@@ -378,5 +391,6 @@ named!(
         | dns_resolvers
         | dns_lookup
         | dns_fail
+        | unlink_fail
     )
 );
