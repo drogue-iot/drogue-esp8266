@@ -18,5 +18,6 @@ drogue-network = { version = "0.2.0", path = "../drogue-network" }
 version= "5.1.2"
 default-features = false
 
-
-
+[features]
+1k = []
+2k = []

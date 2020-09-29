@@ -143,7 +143,7 @@ pub enum Response {
     SendOk,
     SendFail,
     DataAvailable { link_id: usize, len: usize },
-    DataReceived([u8; 512], usize),
+    DataReceived([u8; crate::BUFFER_LEN], usize),
     WifiConnected,
     WifiConnectionFailure(WifiConnectionFailure),
     WifiDisconnect,
