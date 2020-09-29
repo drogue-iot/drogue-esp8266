@@ -56,8 +56,25 @@ named!(
 );
 
 named!(
+    pub reason<()>,
+    do_parse!(
+        // use "!alt" once we identified an additional reason
+        link_invalid
+        >> ()
+    )
+);
+
+named!(
+    pub link_invalid<()>,
+    do_parse!(
+        tag!("link is not valid") >> ()
+    )
+);
+
+named!(
     pub error<Response>,
     do_parse!(
+        opt!(reason) >>
         opt!(crlf) >>
         opt!(crlf) >>
         tag!("ERROR") >>
