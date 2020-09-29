@@ -86,6 +86,7 @@ impl<'a, Rx> Ingress<'a, Rx>
                 | Response::IpAddress(..)
                 | Response::Resolvers(..)
                 | Response::DnsFail
+                | Response::UnlinkFail
                 | Response::IpAddresses(..) => {
                     if let Err(response) = self.response_producer.enqueue(response) {
                         log::error!("failed to enqueue response {:?}", response);
