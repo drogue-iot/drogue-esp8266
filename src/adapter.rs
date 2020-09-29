@@ -494,8 +494,8 @@ impl<'a, Tx> Adapter<'a, Tx>
         }
 
         let mut actual_len = buffer.len();
-        if actual_len > 512 {
-            actual_len = 512;
+        if actual_len > crate::BUFFER_LEN {
+            actual_len = crate::BUFFER_LEN;
         }
 
         let command = Command::Receive {

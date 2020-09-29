@@ -294,7 +294,7 @@ named!(
         crlf >>
         ok >>
         ( {
-            let mut buf = [0; 512];
+            let mut buf = [0; crate::BUFFER_LEN];
             for (i, b) in data.iter().enumerate() {
                 //log::info!( "copy {} @ {}", *b as char, i);
                 buf[i] = *b;
