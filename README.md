@@ -1,7 +1,7 @@
 # Drogue IoT ESP8266
 
 [![crates.io](https://img.shields.io/crates/v/drogue-esp8266.svg)](https://crates.io/crates/drogue-esp8266)
-[![docs.rs](https://docs.rs/drogue-http-client/badge.svg)](https://docs.rs/drogue-esp8266)
+[![docs.rs](https://docs.rs/drogue-esp8266/badge.svg)](https://docs.rs/drogue-esp8266)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
 
 A network driver for an ESP8266 attached via a USART.
