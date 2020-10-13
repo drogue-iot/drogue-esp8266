@@ -174,7 +174,7 @@ impl Debug for Response {
                 .field("len", len)
                 .finish(),
             //Response::DataReceived(d, l) => dump_data("DataReceived", d, *l, f),
-            Response::DataReceived(d, l) => f.write_str("DataReceived"),
+            Response::DataReceived(_, _) => f.write_str("DataReceived"),
             Response::WifiConnected => f.write_str("WifiConnected"),
             Response::WifiConnectionFailure(v) => {
                 f.debug_tuple("WifiConnectionFailure").field(v).finish()
@@ -235,6 +235,7 @@ impl From<u8> for WifiConnectionFailure {
 ///
 /// The output will contain the field name, the data as string (only 7bits) and the raw bytes
 /// in hex encoding.
+#[allow(dead_code)]
 fn dump_data(name: &str, data: &[u8], len: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let data = &data[0..len];
 
