@@ -73,6 +73,8 @@ pub fn initialize<'a, Tx, Rx, EnablePin, ResetPin>(
         .set_high()
         .map_err(|_| AdapterError::UnableToInitialize)?;
 
+    log::debug!("waiting for adapter to become ready");
+
     loop {
         let result = rx.read();
         match result {
