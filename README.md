@@ -4,7 +4,8 @@
 [![docs.rs](https://docs.rs/drogue-esp8266/badge.svg)](https://docs.rs/drogue-esp8266)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
 
-A network driver for an ESP8266 attached via a USART.
+A network driver for an ESP8266 attached via a USART. See [esp8266-at-driver](https://github.com/drogue-iot/esp8266-at-driver) for a driver that
+works with async Rust.
 
 Currently requires the ESP to be flashed with a 1.7.0.x version of the AT firmware provided by Espressif.
 
