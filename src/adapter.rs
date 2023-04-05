@@ -380,10 +380,10 @@ impl<'a, Tx> Adapter<'a, Tx>
                 Response::Connect(_) => {}
                 Response::Closed(link_id) => {
                     match self.sockets[link_id].state {
-                        SocketState::HalfClosed => {
+                        SocketState::Open | SocketState::HalfClosed => {
                             self.sockets[link_id].state = SocketState::Closed;
                         }
-                        SocketState::Open | SocketState::Connected => {
+                        SocketState::Connected => {
                             self.sockets[link_id].state = SocketState::HalfClosed;
                         }
                         SocketState::Closed => {
@@ -397,6 +397,8 @@ impl<'a, Tx> Adapter<'a, Tx>
     }
 
     pub(crate) fn open(&mut self) -> Result<usize, AdapterError> {
+        self.process_notifications();
+
         if let Some((index, socket)) = self
             .sockets
             .iter_mut()
