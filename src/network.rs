@@ -50,6 +50,10 @@ impl<'a, Tx> Esp8266IpNetworkDriver<'a, Tx>
             adapter: RefCell::new(adapter),
         }
     }
+    
+    pub fn into_adapter(self) -> Adapter<'a, Tx> {
+        self.adapter.into_inner()
+    }
 }
 
 impl<'a, Tx> IpNetworkDriver for Esp8266IpNetworkDriver<'a, Tx>
